@@ -53,6 +53,7 @@ char* request_range(SOCKET sock, char* address, char* length) {
 MGBAMap* mgba_read_bg0(MGBAConnection* conn) {
     char response[8192];
     char command[64];
+    char address[] = "0x0600e800";
 
     MGBAMap* map = (MGBAMap*)malloc(sizeof(MGBAMap));
     if (map == NULL) return NULL;
@@ -292,8 +293,8 @@ int mgba_map_to_ascii(MGBAMap* map, char* output, int output_size) {
     return 0;
 }
 
-int mgba_print_map(MGBAConnection* conn) {
-    MGBAMap* map = mgba_read_map(conn);
+int mgba_print_map(MGBAConnection* conn, int bg) {
+    MGBAMap* map = mgba_read_map(conn, bg);
     if (map == NULL) return -1;
     
     char* output = (char*)malloc(map->width * map->height * 3);

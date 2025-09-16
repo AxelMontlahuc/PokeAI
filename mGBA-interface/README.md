@@ -40,12 +40,12 @@ cmake --build .
 ### Manual Building
 
 ```bash
-gcc -c src/mgba_connection.c -o mgba_connection.o -Iinclude
-gcc -c src/mgba_controller.c -o mgba_controller.o -Iinclude
-gcc -c src/mgba_map.c -o mgba_map.o -Iinclude
-gcc -c stc/mgba_interactions.c -o mgba_interactions.o -Iinclude
-gcc -c stc/mgba_intel.c -o mgba_intel.o -Iinclude
-ar rcs lib/libmgba_controller.a mgba_connection.o mgba_controller.o mgba_map.o
+gcc -c src/mgba_connection.c -o build/mgba_connection.o -Iinclude
+gcc -c src/mgba_controller.c -o build/mgba_controller.o -Iinclude
+gcc -c src/mgba_map.c -o build/mgba_map.o -Iinclude
+gcc -c src/mgba_interactions.c -o build/mgba_interactions.o -Iinclude
+gcc -c src/mgba_intel.c -o build/mgba_intel.o -Iinclude
+ar rcs lib/libmgba_controller.a build/mgba_connection.o build/mgba_controller.o build/mgba_map.o
 gcc examples/simple_controller.c -o examples/simple_controller -Iinclude -Llib -lmgba_controller -lws2_32
 ```
 

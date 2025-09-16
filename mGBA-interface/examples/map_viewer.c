@@ -22,7 +22,7 @@ int main() {
         system("@cls||clear");
         
         // Print map to console
-        if (mgba_print_map(&conn) != 0) {
+        if (mgba_print_map(&conn, 2) != 0) {
             printf("Error printing map\n");
         }
         
