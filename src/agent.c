@@ -47,6 +47,14 @@ double* fetchState(MGBAConnection conn) {
     return state;
 }
 
+double softmax(double* logits, int n, int i) {
+    double sum = 0.0;
+    for (int j=0; j<n; j++) {
+        sum += exp(logits[j]);
+    }
+    return exp(logits[i]) / sum;
+}
+
 int main() {
     MGBAConnection conn;
     int result;
