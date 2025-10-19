@@ -10,3 +10,5 @@ pokemerald.sav
 mGBA-interface/build/*
 tests/*
 *.png
+build
+bin
