@@ -7,3 +7,9 @@ pokemerald.sav
 *.gb
 *.gbc
 *.ss*
+mGBA-interface/build/*
+tests/*
+*.png
+build
+bin
+ROM
