@@ -1,69 +1,101 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <math.h>
 #include <assert.h>
+#include <time.h>
+
+#include "struct.h"
+#include "func.h"
+#include "state.h"
+#include "policy.h"
 
 #include "../mGBA-interface/include/mgba_connection.h"
 #include "../mGBA-interface/include/mgba_controller.h"
 #include "../mGBA-interface/include/mgba_map.h"
 #include "../mGBA-interface/include/mgba_intel.h"
 
+#define ACTION_COUNT 8
+static const MGBAButton ACTIONS[ACTION_COUNT] = {
+    MGBA_BUTTON_UP, MGBA_BUTTON_DOWN, MGBA_BUTTON_LEFT, MGBA_BUTTON_RIGHT,
+    MGBA_BUTTON_A, MGBA_BUTTON_B, MGBA_BUTTON_START, MGBA_BUTTON_SELECT
+};
 
-double* fetchState(MGBAConnection conn) {
-    double* state = malloc((4*(32*32) + (6*8) + 4 + 3 + 1) * sizeof(double));
-    MGBAMap* map;
-    for (int i=0; i<4; i++) {
-        map = mgba_read_map(&conn, i);
-        for (int k=0; k<32; k++) {
-            for (int l=0; l<32; l++) {
-                state[i*32*32 + k*32 + l] = (double)map->tiles[k][l];
-            }
+MGBAButton chooseAction(double* probs) {
+    double r = (double)rand() / RAND_MAX;
+    double cumulative = 0.0;
+    for (int i = 0; i < ACTION_COUNT; i++) {
+        cumulative += probs[i];
+        if (r <= cumulative) {
+            return ACTIONS[i];
         }
     }
-    mgba_free_map(map);
-    
-    for (int i=0; i<6; i++) {
-        state[4*(32*32) + i*8 + 0] = (double)get_max_HP(conn.sock, i);
-        state[4*(32*32) + i*8 + 1] = (double)get_HP(conn.sock, i);
-        state[4*(32*32) + i*8 + 2] = (double)get_level(conn.sock, i);
-        state[4*(32*32) + i*8 + 3] = (double)get_ATK(conn.sock, i);
-        state[4*(32*32) + i*8 + 4] = (double)get_DEF(conn.sock, i);
-        state[4*(32*32) + i*8 + 5] = (double)get_SPEED(conn.sock, i);
-        state[4*(32*32) + i*8 + 6] = (double)get_ATK_SPE(conn.sock, i);
-        state[4*(32*32) + i*8 + 7] = (double)get_DEF_SPE(conn.sock, i);
-    }
-
-    state[4*(32*32) + 6*8 + 0] = (double)get_PP(conn.sock, 0);
-    state[4*(32*32) + 6*8 + 1] = (double)get_PP(conn.sock, 1);
-    state[4*(32*32) + 6*8 + 2] = (double)get_PP(conn.sock, 2);
-    state[4*(32*32) + 6*8 + 3] = (double)get_PP(conn.sock, 3);
-
-    state[4*(32*32) + 6*8 + 4] = (double)get_enemy_max_HP(conn.sock);
-    state[4*(32*32) + 6*8 + 5] = (double)get_enemy_HP(conn.sock);
-    state[4*(32*32) + 6*8 + 6] = (double)get_enemy_level(conn.sock);
-
-    state[4*(32*32) + 6*8 + 7] = (double)get_zone(conn.sock);
-
-    return state;
+    return ACTIONS[5];
 }
 
-double softmax(double* logits, int n, int i) {
-    double sum = 0.0;
-    for (int j=0; j<n; j++) {
-        sum += exp(logits[j]);
+trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps) {
+    trajectory* traj = initTrajectory(steps);
+    assert(traj != NULL);
+
+    for (int j=0; j<network->hiddenSize; j++) {
+        network->hiddenState[j] = 0.0;
+        network->cellState[j] = 0.0;
     }
-    return exp(logits[i]) / sum;
+
+    for (int i=0; i<steps; i++) {
+        traj->states[i] = fetchState(conn);
+
+        double* input_vec = convertState(traj->states[i]);
+        double* hidden = forward(network, input_vec);
+        double* distribution = softmaxLayer(hidden, ACTION_COUNT);
+
+        traj->probs[i] = malloc(ACTION_COUNT * sizeof(double));
+        assert(traj->probs[i] != NULL);
+
+        for (int k=0; k<ACTION_COUNT; k++) traj->probs[i][k] = distribution[k]; 
+        traj->actions[i] = chooseAction(traj->probs[i]);
+
+        mgba_press_button(&conn, traj->actions[i], 50);
+
+        state s_next = fetchState(conn);
+        traj->rewards[i] = pnl(traj->states[i], s_next);
+
+        free(distribution);
+        free(input_vec);
+        freeState(s_next);
+    }
+
+    return traj;
 }
 
 int main() {
     MGBAConnection conn;
-    int result;
-    result = mgba_connect(&conn, "127.0.0.1", 8888);
-    if (result != 0) {
-        printf("Failed to connect to mGBA. Error code: %d\n", result);
-        return 1;
-    }
-    printf("Connected to mGBA.\n");
+    if (mgba_connect(&conn, "127.0.0.1", 8888) == 0) printf("Connected to mGBA.\n");
 
+    srand((unsigned int)time(NULL));
+
+    int inputSize = 4*(32*32) + 6*8 + 4 + 3 + 2;
+    int hiddenSize = 8;
+    LSTM* network = initLSTM(inputSize, hiddenSize);
+
+    int trajectories = 60;
+    int steps = 64;
+
+    for (int t=0; t<trajectories; t++) {
+        trajectory* traj = runTrajectory(conn, network, steps);
+        
+        double ret = 0.0;
+        for (int i=0; i<steps; i++) ret += traj->rewards[i];
+        printf("Trajectory %d: return=%.3f\n", t+1, ret);
+
+        double* data = convertState(traj->states[0]);
+        backpropagation(network, data, 0.01, steps, traj);
+        
+        free(data);
+        freeTrajectory(traj);
+    }
+
+    freeLSTM(network);
+    mgba_disconnect(&conn);
     return 0;
 }
