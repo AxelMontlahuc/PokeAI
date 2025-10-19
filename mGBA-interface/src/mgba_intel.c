@@ -488,9 +488,9 @@ int get_enemy_level(SOCKET sock) {
 }
 
 int get_zone(SOCKET sock) {
-    char* address = "0x02037324";
+    char* address = "0x020322E4";
     char* message = malloc(128 * sizeof(char));
-    sprintf(message, "memoryDomain.read8,wram,%s", address);
+    sprintf(message, "memoryDomain.read16,wram,%s", address);
 
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;

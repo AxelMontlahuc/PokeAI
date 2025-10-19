@@ -9,6 +9,8 @@
 
 #include "struct.h"
 
+#include "../mGBA-interface/include/mgba_intel.h"
+
 double pnl(state s, state s_next);
 
 #endif

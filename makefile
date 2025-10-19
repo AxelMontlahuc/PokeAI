@@ -12,7 +12,8 @@ APP_SRC := \
   src/func.c \
   src/policy.c \
   src/state.c \
-  src/struct.c
+  src/struct.c \
+  src/reward.c
 
 APP_OBJS := $(APP_SRC:%.c=$(BUILD_DIR)/%.o)
 
@@ -51,6 +52,6 @@ run: $(TARGET)
 	$(TARGET)
 
 clean:
-	-@echo Cleaning...
-	-@rm -rf $(BUILD_DIR) $(BIN_DIR)
-	-@rmdir /s /q $(BUILD_DIR) $(BIN_DIR) 2> NUL || exit 0
+	@powershell -NoProfile -Command "if (Test-Path '$(BUILD_DIR)') { Remove-Item -Recurse -Force '$(BUILD_DIR)' }"
+	@powershell -NoProfile -Command "if (Test-Path '$(BIN_DIR)') { Remove-Item -Recurse -Force '$(BIN_DIR)' }"
+	@echo Cleaned

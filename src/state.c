@@ -1,5 +1,4 @@
 #include "state.h"
-#include "struct.h"
 
 pokemon fetchPoke(MGBAConnection conn, int i) {
     pokemon poke;
@@ -48,17 +47,6 @@ state fetchState(MGBAConnection conn) {
     s.clock = get_clock(conn.sock);
 
     return s;
-}
-
-void freeState(state s) {
-    mgba_free_map(s.map0);
-    mgba_free_map(s.map1);
-    mgba_free_map(s.map2);
-    mgba_free_map(s.map3);
-
-    free(s.team);
-    free(s.enemy);
-    free(s.PP);
 }
 
 double* convertState(state s) {
