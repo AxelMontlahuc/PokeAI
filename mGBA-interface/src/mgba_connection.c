@@ -1,8 +1,4 @@
 #include "../include/mgba_connection.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <windows.h>
 
 int mgba_connect(MGBAConnection* conn, const char* ip_address, int port) {
     WSADATA wsa;

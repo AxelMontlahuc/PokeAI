@@ -1,11 +1,8 @@
 #include "../include/mgba_intel.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <windows.h>
 
 int get_max_HP(SOCKET sock, int pokemon) {
     char* address;
+
     switch (pokemon) {
         case 1:
             address = "0x02024544";
@@ -28,8 +25,10 @@ int get_max_HP(SOCKET sock, int pokemon) {
         default:
             return -1;
     }
+
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read16,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -39,12 +38,18 @@ int get_max_HP(SOCKET sock, int pokemon) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_HP(SOCKET sock, int pokemon) {
     char* address;
+
     switch (pokemon) {
         case 1:
             address = "0x02024542";
@@ -67,8 +72,10 @@ int get_HP(SOCKET sock, int pokemon) {
         default:
             return -1;
     }
+
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read16,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -78,12 +85,18 @@ int get_HP(SOCKET sock, int pokemon) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_level(SOCKET sock, int pokemon) {
     char* address;
+
     switch (pokemon) {
         case 1:
             address = "0x02024540";
@@ -106,8 +119,10 @@ int get_level(SOCKET sock, int pokemon) {
         default:
             return -1;
     }
+
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read8,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -117,12 +132,18 @@ int get_level(SOCKET sock, int pokemon) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+    
+    return value;
 }
 
 int get_ATK(SOCKET sock, int pokemon) {
     char* address;
+
     switch (pokemon) {
         case 1:
             address = "0x02024546";
@@ -145,8 +166,10 @@ int get_ATK(SOCKET sock, int pokemon) {
         default:
             return -1;
     }
+
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read16,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -156,12 +179,18 @@ int get_ATK(SOCKET sock, int pokemon) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_DEF(SOCKET sock, int pokemon) {
     char* address;
+
     switch (pokemon) {
         case 1:
             address = "0x02024548";
@@ -184,8 +213,10 @@ int get_DEF(SOCKET sock, int pokemon) {
         default:
             return -1;
     }
+    
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read16,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -195,12 +226,18 @@ int get_DEF(SOCKET sock, int pokemon) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_SPEED(SOCKET sock, int pokemon) {
     char* address;
+
     switch (pokemon) {
         case 1:
             address = "0x0202454A";
@@ -223,8 +260,10 @@ int get_SPEED(SOCKET sock, int pokemon) {
         default:
             return -1;
     }
+
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read16,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -234,12 +273,18 @@ int get_SPEED(SOCKET sock, int pokemon) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_ATK_SPE(SOCKET sock, int pokemon) {
     char* address;
+
     switch (pokemon) {
         case 1:
             address = "0x0202454C";
@@ -262,8 +307,10 @@ int get_ATK_SPE(SOCKET sock, int pokemon) {
         default:
             return -1;
     }
+
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read16,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -273,12 +320,18 @@ int get_ATK_SPE(SOCKET sock, int pokemon) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_DEF_SPE(SOCKET sock, int pokemon) {
     char* address;
+
     switch (pokemon) {
         case 1:
             address = "0x0202454E";
@@ -301,8 +354,10 @@ int get_DEF_SPE(SOCKET sock, int pokemon) {
         default:
             return -1;
     }
+
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read16,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -312,12 +367,18 @@ int get_DEF_SPE(SOCKET sock, int pokemon) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_PP(SOCKET sock, int move) {
     char* address;
+
     switch (move) {
         case 1:
             address = "0x020240A8";
@@ -334,8 +395,10 @@ int get_PP(SOCKET sock, int move) {
         default:
             return -1;
     }
+
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read8,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -345,14 +408,20 @@ int get_PP(SOCKET sock, int move) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_enemy_max_HP(SOCKET sock) {
     char* address = "0x02024108";
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read16,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -362,14 +431,20 @@ int get_enemy_max_HP(SOCKET sock) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+    
+    return value;
 }
 
 int get_enemy_HP(SOCKET sock) {
     char* address = "0x02024104";
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read16,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -379,16 +454,23 @@ int get_enemy_HP(SOCKET sock) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_enemy_level(SOCKET sock) {
     char* address = "0x02024106";
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read8,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
+
     if (send(sock, message, strlen(message), 0) < 0) {
         printf("Send failed. Error Code: %d\n", WSAGetLastError());
     }
@@ -396,14 +478,20 @@ int get_enemy_level(SOCKET sock) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
 }
 
 int get_zone(SOCKET sock) {
     char* address = "0x02037324";
     char* message = malloc(128 * sizeof(char));
     sprintf(message, "memoryDomain.read8,wram,%s", address);
+
     char* server_reply = malloc(64 * sizeof(char));
     int recv_size;
     if (send(sock, message, strlen(message), 0) < 0) {
@@ -413,6 +501,34 @@ int get_zone(SOCKET sock) {
         printf("Receive failed. Error Code: %d\n", WSAGetLastError());
     }
     server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
     free(message);
-    return atoi(server_reply);
+
+    return value;
+}
+
+int get_clock(SOCKET sock) {
+    char* address = "0x0203cd9c";
+    char* message = malloc(128 * sizeof(char));
+    sprintf(message, "memoryDomain.read8,wram,%s", address);
+
+    char* server_reply = malloc(64 * sizeof(char));
+    int recv_size;
+    if (send(sock, message, strlen(message), 0) < 0) {
+        printf("Send failed. Error Code: %d\n", WSAGetLastError());
+    }
+    if ((recv_size = recv(sock, server_reply, 32 - 1, 0)) == SOCKET_ERROR) {
+        printf("Receive failed. Error Code: %d\n", WSAGetLastError());
+    }
+    server_reply[recv_size] = '\0';
+
+    int value = atoi(server_reply);
+
+    free(server_reply);
+    free(message);
+
+    return value;
 }
