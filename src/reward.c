@@ -67,3 +67,7 @@ double pnl(state s, state s_next) {
 
     return pnl;
 }
+
+bool stop() {
+    return CLOCK_FLAG;
+}

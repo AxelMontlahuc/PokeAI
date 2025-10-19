@@ -8,6 +8,7 @@
 #include "struct.h"
 #include "func.h"
 #include "state.h"
+#include "reward.h"
 #include "policy.h"
 
 #include "../mGBA-interface/include/mgba_connection.h"
@@ -81,6 +82,13 @@ int main() {
     int trajectories = 60;
     int steps = 64;
 
+    for (int i=0; i<256; i++) {
+        mgba_press_button(&conn, MGBA_BUTTON_A, 50);
+    }
+    mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+    mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+    printf("Game Initialized\n\n");
+
     for (int t=0; t<trajectories; t++) {
         trajectory* traj = runTrajectory(conn, network, steps);
         
@@ -93,6 +101,11 @@ int main() {
         
         free(data);
         freeTrajectory(traj);
+
+        if (stop()) {
+            printf("Objective met.\n");
+            break;
+        }
     }
 
     freeLSTM(network);
