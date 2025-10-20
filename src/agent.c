@@ -79,32 +79,48 @@ int main() {
     int hiddenSize = 8;
     LSTM* network = initLSTM(inputSize, hiddenSize);
 
-    int trajectories = 60;
+    int trajectories = 30;
     int steps = 64;
 
-    for (int i=0; i<256; i++) {
-        mgba_press_button(&conn, MGBA_BUTTON_A, 50);
-    }
-    mgba_press_button(&conn, MGBA_BUTTON_B, 50);
-    mgba_press_button(&conn, MGBA_BUTTON_B, 50);
-    printf("Game Initialized\n\n");
-
-    for (int t=0; t<trajectories; t++) {
-        trajectory* traj = runTrajectory(conn, network, steps);
+    while (true) {
+        mgba_reset(&conn);
         
-        double ret = 0.0;
-        for (int i=0; i<steps; i++) ret += traj->rewards[i];
-        printf("Trajectory %d: return=%.3f\n", t+1, ret);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 1000);
 
-        double* data = convertState(traj->states[0]);
-        backpropagation(network, data, 0.01, steps, traj);
-        
-        free(data);
-        freeTrajectory(traj);
+        mgba_press_button(&conn, MGBA_BUTTON_START, 1000);
+        mgba_press_button(&conn, MGBA_BUTTON_START, 1000);
 
-        if (stop()) {
-            printf("Objective met.\n");
-            break;
+        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 1000);
+        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 200);
+        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 200);
+        mgba_press_button(&conn, MGBA_BUTTON_UP, 200);
+
+        for (int i=0; i<256; i++) {
+            mgba_press_button(&conn, MGBA_BUTTON_A, 50);
+        }
+        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+        printf("Game Initialized\n\n");
+
+        for (int t=0; t<trajectories; t++) {
+            trajectory* traj = runTrajectory(conn, network, steps);
+            
+            double ret = 0.0;
+            for (int i=0; i<steps; i++) ret += traj->rewards[i];
+            printf("Trajectory %d: return=%.3f\n", t+1, ret);
+
+            double* data = convertState(traj->states[0]);
+            backpropagation(network, data, 0.01, steps, traj);
+            
+            free(data);
+            freeTrajectory(traj);
+
+            if (stop()) {
+                printf("Objective met.\n");
+                break;
+            }
         }
     }
 

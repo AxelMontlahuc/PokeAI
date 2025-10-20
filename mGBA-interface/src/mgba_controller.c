@@ -11,6 +11,18 @@ const char* mgba_button_to_string(MGBAButton button) {
     return "Unknown";
 }
 
+int mgba_reset(MGBAConnection* conn) {
+    char message[] = "mgba-http.emu.reset";
+    char response[1024];
+
+    int result = mgba_send_command(conn, message, response, sizeof(response));
+    if (result < 0) {
+        return result;
+    }
+
+    return 0;
+}
+
 int mgba_press_button(MGBAConnection* conn, MGBAButton button, int delay_ms) {
     char message[64];
     char response[1024];
