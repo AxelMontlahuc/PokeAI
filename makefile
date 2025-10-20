@@ -13,6 +13,7 @@ APP_SRC := \
   src/policy.c \
   src/state.c \
   src/struct.c \
+  src/checkpoint.c \
   src/reward.c
 
 APP_OBJS := $(APP_SRC:%.c=$(BUILD_DIR)/%.o)
