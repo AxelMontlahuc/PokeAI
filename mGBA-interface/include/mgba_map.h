@@ -6,7 +6,6 @@
 #include <stdlib.h>
 
 #include "mgba_connection.h"
-#include <windows.h>
 
 typedef struct {
     int tile_id;

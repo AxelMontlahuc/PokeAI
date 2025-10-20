@@ -6,7 +6,6 @@
 #include <stdlib.h>
 
 #include "mgba_connection.h"
-#include <windows.h>
 
 int get_max_HP(SOCKET sock, int pokemon);
 int get_HP(SOCKET sock, int pokemon);

@@ -6,7 +6,17 @@
 #include <stdlib.h>
 
 #include "mgba_connection.h"
-#include <windows.h>
+
+#ifndef _WIN32
+    #include <sys/select.h>
+    #include <sys/time.h>
+    static inline void Sleep(unsigned int ms) {
+        struct timeval tv;
+        tv.tv_sec = ms / 1000;
+        tv.tv_usec = (ms % 1000) * 1000;
+        (void)select(0, NULL, NULL, NULL, &tv);
+    }
+#endif
 
 typedef enum {
     MGBA_BUTTON_A,
