@@ -20,6 +20,8 @@ typedef enum {
     MGBA_BUTTON_R,
     MGBA_BUTTON_L
 } MGBAButton;
+
+int mgba_reset(MGBAConnection* conn);
 int mgba_press_button(MGBAConnection* conn, MGBAButton button, int delay_ms);
 int mgba_hold_button(MGBAConnection* conn, MGBAButton button, int duration_frames);
 

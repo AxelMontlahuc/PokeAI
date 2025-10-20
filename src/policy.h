@@ -9,6 +9,7 @@
 
 #include "struct.h"
 #include "func.h"
+#include "reward.h"
 
 double* forward(LSTM* network, double* data);
 double* backpropagation(LSTM* network, double* data, double learningRate, int steps, trajectory* trajectories);

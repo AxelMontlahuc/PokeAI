@@ -423,22 +423,6 @@ double* dL_dBo(double* cellState, double* oArray, int hiddenSize) {
     return grad;
 }
 
-double pnl(state s_t, state s_t_suite) {
-    double pnl = -0.01;
-    if(s_t_suite.clock == 80 && s_t.clock != 80) {
-        pnl += 100;
-    }
-    for(int i = 0; i < 6; i += 1){
-        if(s_t_suite.team[i].level > s_t.team[i].level){
-            pnl += 5;
-        }
-        if(s_t_suite.team[i].HP <= s_t.team[i].HP/3) {
-            pnl --;
-        }
-    }
-    return pnl;
-}
-
 double* discountedPNL(state* etats, double gamma, int steps) {
     double* G = calloc(steps, sizeof(double));
     assert(G != NULL);

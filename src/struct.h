@@ -7,8 +7,8 @@
 #include <math.h>
 #include <assert.h>
 
-#include "../mGBA-interface/include/mgba_map.h"
 #include "../mGBA-interface/include/mgba_controller.h"
+#include "../mGBA-interface/include/mgba_map.h"
 
 #define typeshit typedef
 
@@ -65,6 +65,7 @@ typeshit struct trajectory {
     int steps;
 } trajectory;
 
+void freeState(state s);
 LSTM* initLSTM(int inputSize, int hiddenSize);
 void freeLSTM(LSTM* network);
 trajectory* initTrajectory(int steps);

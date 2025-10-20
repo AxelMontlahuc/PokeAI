@@ -133,6 +133,7 @@ function messageRouter(rawMessage)
 	elseif messageType == "memoryDomain.read8" then returnValue = emu.memory[messageValue1]:read8(tonumber(messageValue2))
 	elseif messageType == "memoryDomain.read16" then returnValue = emu.memory[messageValue1]:read16(tonumber(messageValue2))
 	elseif messageType == "memoryDomain.readRange" then returnValue = emu.memory[messageValue1]:readRange(tonumber(messageValue2), tonumber(messageValue3))
+	elseif messageType == "mgba-http.emu.reset" then returnValue = emu:reset()
 	elseif (rawMessage == "<|ACK|>") then formattedLog("Connecting.")	
 	elseif (rawMessage ~= nil or rawMessage ~= '') then formattedLog("Unable to route raw message: " .. rawMessage)
 	else formattedLog(messageType)	
@@ -210,5 +211,4 @@ end
 -- ***********************
 -- Start
 -- ***********************
-
 beginSocket()

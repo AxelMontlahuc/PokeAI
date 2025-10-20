@@ -4,11 +4,18 @@
 #include <math.h>
 #include <assert.h>
 #include <time.h>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 #include "struct.h"
 #include "func.h"
 #include "state.h"
+#include "reward.h"
 #include "policy.h"
+#include "checkpoint.h"
 
 #include "../mGBA-interface/include/mgba_connection.h"
 #include "../mGBA-interface/include/mgba_controller.h"
@@ -72,27 +79,76 @@ int main() {
     MGBAConnection conn;
     if (mgba_connect(&conn, "127.0.0.1", 8888) == 0) printf("Connected to mGBA.\n");
 
-    srand((unsigned int)time(NULL));
+    unsigned int seed = (unsigned int)time(NULL);
+    srand(seed);
 
     int inputSize = 4*(32*32) + 6*8 + 4 + 3 + 2;
     int hiddenSize = 8;
-    LSTM* network = initLSTM(inputSize, hiddenSize);
+    LSTM* network = loadLSTM("checkpoints/model-last.bin");
+    if (network) {
+        printf("Loaded model from checkpoints/model-last.bin (input=%d, hidden=%d)\n", network->inputSize, network->hiddenSize);
+    } else {
+        network = initLSTM(inputSize, hiddenSize);
+        printf("Initialized new model (input=%d, hidden=%d)\n", inputSize, hiddenSize);
+    }
 
-    int trajectories = 60;
+    int trajectories = 30;
     int steps = 64;
+    unsigned long long episode = 0ULL;
 
-    for (int t=0; t<trajectories; t++) {
-        trajectory* traj = runTrajectory(conn, network, steps);
+    while (true) {
+        mgba_reset(&conn);
         
-        double ret = 0.0;
-        for (int i=0; i<steps; i++) ret += traj->rewards[i];
-        printf("Trajectory %d: return=%.3f\n", t+1, ret);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 1000);
 
-        double* data = convertState(traj->states[0]);
-        backpropagation(network, data, 0.01, steps, traj);
-        
-        free(data);
-        freeTrajectory(traj);
+        mgba_press_button(&conn, MGBA_BUTTON_START, 1000);
+        mgba_press_button(&conn, MGBA_BUTTON_START, 1000);
+
+        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 1000);
+        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 200);
+        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 200);
+        mgba_press_button(&conn, MGBA_BUTTON_UP, 200);
+
+        for (int i=0; i<256; i++) {
+            mgba_press_button(&conn, MGBA_BUTTON_A, 50);
+        }
+        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+        printf("Game Initialized\n\n");
+
+        for (int t=0; t<trajectories; t++) {
+            trajectory* traj = runTrajectory(conn, network, steps);
+            
+            double ret = 0.0;
+            for (int i=0; i<steps; i++) ret += traj->rewards[i];
+            printf("Trajectory %d: return=%lf\n", t+1, ret);
+
+            double* data = convertState(traj->states[0]);
+            backpropagation(network, data, 0.01, steps, traj);
+            
+            free(data);
+            freeTrajectory(traj);
+
+            episode++;
+
+            if (stop()) {
+                printf("Objective met.\n");
+                break;
+            }
+        }
+
+        #ifdef _WIN32
+        _mkdir("checkpoints");
+        #else
+        mkdir("checkpoints", 0755);
+        #endif
+        if (saveLSTMCheckpoint("checkpoints/model-last.bin", network, (uint64_t)episode, (uint64_t)seed) == 0) {
+            printf("Saved checkpoint: checkpoints/model-last.bin (episode=%llu)\n", episode);
+        } else {
+            printf("Warning: failed to save checkpoint.\n");
+        }
     }
 
     freeLSTM(network);

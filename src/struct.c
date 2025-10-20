@@ -1,5 +1,16 @@
 #include "struct.h"
 
+void freeState(state s) {
+    mgba_free_map(s.map0);
+    mgba_free_map(s.map1);
+    mgba_free_map(s.map2);
+    mgba_free_map(s.map3);
+
+    free(s.team);
+    free(s.enemy);
+    free(s.PP);
+}
+
 double heInitialization(double fanIn) {
     return (2.0*((double)rand() / (double)RAND_MAX)-1.0) * sqrt(2.0 / fanIn);
 }
