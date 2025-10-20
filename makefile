@@ -2,7 +2,21 @@ CC := gcc
 AR := ar
 CSTD := -std=c99
 CFLAGS := $(CSTD) -Wall -Wextra -O2 -Isrc -ImGBA-interface/include
-LDFLAGS := -lws2_32 -lm
+
+# Detect platform for linker flags and file extensions
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+	LDFLAGS := -lm
+	EXE :=
+	MKDIR_P := mkdir -p
+	RM_RF := rm -rf
+else
+	# Assume Windows (MSYS/MinGW)
+	LDFLAGS := -lws2_32 -lm
+	EXE := .exe
+	MKDIR_P := powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path"
+	RM_RF := cmd /C rmdir /S /Q
+endif
 
 BUILD_DIR := build
 BIN_DIR := bin
@@ -27,18 +41,22 @@ MGBA_SRC := \
 MGBA_OBJS := $(MGBA_SRC:%.c=$(BUILD_DIR)/%.o)
 LIBMGBA := $(BUILD_DIR)/libmgba_controller.a
 
-TARGET := $(BIN_DIR)/agent.exe
+TARGET := $(BIN_DIR)/agent$(EXE)
 
 .PHONY: all clean run dirs
 
 all: $(TARGET)
 
 dirs:
+ifeq ($(UNAME_S),Linux)
+	@$(MKDIR_P) $(BUILD_DIR) $(BIN_DIR) $(BUILD_DIR)/src $(BUILD_DIR)/mGBA-interface $(BUILD_DIR)/mGBA-interface/src
+else
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)' | Out-Null"
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BIN_DIR)' | Out-Null"
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/src' | Out-Null"
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/mGBA-interface' | Out-Null"
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/mGBA-interface/src' | Out-Null"
+endif
 
 $(TARGET): dirs $(APP_OBJS) $(LIBMGBA)
 	$(CC) $(APP_OBJS) -o $@ $(LIBMGBA) $(LDFLAGS)
@@ -53,6 +71,9 @@ run: $(TARGET)
 	$(TARGET)
 
 clean:
-	@powershell -NoProfile -Command "if (Test-Path '$(BUILD_DIR)') { Remove-Item -Recurse -Force '$(BUILD_DIR)' }"
-	@powershell -NoProfile -Command "if (Test-Path '$(BIN_DIR)') { Remove-Item -Recurse -Force '$(BIN_DIR)' }"
-	@echo Cleaned
+	-@echo Cleaning...
+ifeq ($(UNAME_S),Linux)
+	-@$(RM_RF) $(BUILD_DIR) $(BIN_DIR)
+else
+	-@cmd /C rmdir /S /Q $(BUILD_DIR) $(BIN_DIR) 2> NUL || exit 0
+endif
