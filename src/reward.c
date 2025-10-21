@@ -20,14 +20,6 @@ double pnl(state s, state s_next) {
         pnl += 2.5;
     }
 
-    if (!CLOCK_FLAG && s.zone == 257 && s_next.zone == 1) {
-        pnl -= 2.0;
-    }
-
-    if (!CLOCK_FLAG && ROOM_FLAG && s.zone == 1 && s_next.zone == 257) {
-        pnl += 1.5;
-    }
-
     if (!CLOCK_FLAG && s_next.clock == 80) {
         CLOCK_FLAG = true;
         pnl += 10.0;
@@ -55,15 +47,6 @@ double pnl(state s, state s_next) {
         OPP_ROOM_FLAG = true;
         pnl += 5.0;
     }
-
-    /*for (int i = 0; i < 6; i += 1) {
-        if (s_next.team[i].level > s.team[i].level) {
-            pnl += 5.0;
-        }
-        if (s_next.team[i].HP <= s.team[i].HP/3) {
-            pnl -= 1.0;
-        }
-    }*/
 
     return pnl;
 }

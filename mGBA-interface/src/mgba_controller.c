@@ -29,7 +29,6 @@ int mgba_press_button(MGBAConnection* conn, MGBAButton button, int delay_ms) {
     const char* button_str = mgba_button_to_string(button);
 
     snprintf(message, sizeof(message), "mgba-http.button.tap,%s", button_str);
-    printf("Pressing button: %s\n", button_str);
 
     int result = mgba_send_command(conn, message, response, sizeof(response));
     if (result < 0) {
