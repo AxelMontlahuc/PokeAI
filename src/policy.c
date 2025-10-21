@@ -461,7 +461,6 @@ static int actionToIndex(MGBAButton action) {
         case MGBA_BUTTON_A: return 4;
         case MGBA_BUTTON_B: return 5;
         case MGBA_BUTTON_START: return 6;
-        case MGBA_BUTTON_SELECT: return 7;
         default: return 5;
     }
 }
@@ -863,7 +862,7 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
         for (int j = 0; j < H; j++) network->Wc[a][j] += learningRate * dWc[a][j];
         for (int j = 0; j < H; j++) network->Wo[a][j] += learningRate * dWo[a][j];
     }
-    
+
     for (int j = 0; j < H; j++) network->Bf[j] += learningRate * dBf[j];
     for (int j = 0; j < H; j++) network->Bi[j] += learningRate * dBi[j];
     for (int j = 0; j < H; j++) network->Bc[j] += learningRate * dBc[j];

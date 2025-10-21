@@ -99,19 +99,19 @@ int main() {
     while (true) {
         mgba_reset(&conn);
         
-        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
-        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
-        mgba_press_button(&conn, MGBA_BUTTON_B, 1000);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 3000);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 500);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 2000);
 
         mgba_press_button(&conn, MGBA_BUTTON_START, 1000);
-        mgba_press_button(&conn, MGBA_BUTTON_START, 1000);
+        mgba_press_button(&conn, MGBA_BUTTON_START, 2000);
 
-        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 1000);
-        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 200);
-        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 200);
-        mgba_press_button(&conn, MGBA_BUTTON_UP, 200);
+        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 500);
+        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 500);
+        mgba_press_button(&conn, MGBA_BUTTON_DOWN, 500);
+        mgba_press_button(&conn, MGBA_BUTTON_UP, 500);
 
-        for (int i=0; i<256; i++) {
+        for (int i=0; i<300; i++) {
             mgba_press_button(&conn, MGBA_BUTTON_A, 50);
         }
         mgba_press_button(&conn, MGBA_BUTTON_B, 50);

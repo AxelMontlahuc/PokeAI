@@ -126,7 +126,7 @@ function messageRouter(rawMessage)
 
 	local returnValue = defaultReturnValue;
 
-	formattedLog("messageRouter: \n\tRaw message:" .. rawMessage .. "\n\tmessageType: " .. (messageType or "") .. "\n\tmessageValue1: " .. (messageValue1 or "") .. "\n\tmessageValue2: " .. (messageValue2 or "") .. "\n\tmessageValue3: " .. (messageValue3 or ""))
+	-- formattedLog("messageRouter: \n\tRaw message:" .. rawMessage .. "\n\tmessageType: " .. (messageType or "") .. "\n\tmessageValue1: " .. (messageValue1 or "") .. "\n\tmessageValue2: " .. (messageValue2 or "") .. "\n\tmessageValue3: " .. (messageValue3 or ""))
 
 	if messageType == "mgba-http.button.tap" then manageButton(messageValue1)
 	elseif messageType == "mgba-http.button.hold" then manageButton(messageValue1, messageValue2)
@@ -141,7 +141,7 @@ function messageRouter(rawMessage)
 
 	returnValue = tostring(returnValue or defaultReturnValue);
 
-	formattedLog("Returning: " .. returnValue)
+	-- formattedLog("Returning: " .. returnValue)
 	return returnValue;
 end
 
@@ -152,6 +152,7 @@ end
 local keyEventQueue = {}
 
 function manageButton(keyLetter, duration)
+	formattedLog("Pressing button: " .. keyLetter .. " for " .. (tostring(duration) .. " ms" or "1 frame"))
     duration = duration or 0
     local key = keyValues[keyLetter]
     local startFrame = emu:currentFrame()

@@ -19,16 +19,13 @@
 #endif
 
 typedef enum {
-    MGBA_BUTTON_A,
-    MGBA_BUTTON_B,
-    MGBA_BUTTON_SELECT,
-    MGBA_BUTTON_START,
-    MGBA_BUTTON_RIGHT,
-    MGBA_BUTTON_LEFT,
     MGBA_BUTTON_UP,
     MGBA_BUTTON_DOWN,
-    MGBA_BUTTON_R,
-    MGBA_BUTTON_L
+    MGBA_BUTTON_LEFT,
+    MGBA_BUTTON_RIGHT,
+    MGBA_BUTTON_A,
+    MGBA_BUTTON_B,
+    MGBA_BUTTON_START
 } MGBAButton;
 
 int mgba_reset(MGBAConnection* conn);
