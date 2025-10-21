@@ -53,22 +53,22 @@ double* convertState(state s) {
     double* out = malloc((4*(32*32) + (6*8) + 4 + 3 + 2) * sizeof(double));
     for (int k=0; k<32; k++) {
         for (int l=0; l<32; l++) {
-            out[0*32*32 + k*32 + l] = (double)s.bg0[k][l] / 4096.0;
+            out[0*32*32 + k*32 + l] = (double)s.bg0[k][l] / 2048.0 - 0.5;
         }
     }
     for (int k=0; k<32; k++) {
         for (int l=0; l<32; l++) {
-            out[1*32*32 + k*32 + l] = (double)s.bg1[k][l] / 4096.0;
+            out[1*32*32 + k*32 + l] = (double)s.bg1[k][l] / 2048.0 - 0.5;
         }
     }
     for (int k=0; k<32; k++) {
         for (int l=0; l<32; l++) {
-            out[2*32*32 + k*32 + l] = (double)s.bg2[k][l] / 4096.0;
+            out[2*32*32 + k*32 + l] = (double)s.bg2[k][l] / 2048.0 - 0.5;
         }
     }
     for (int k=0; k<32; k++) {
         for (int l=0; l<32; l++) {
-            out[3*32*32 + k*32 + l] = (double)s.bg3[k][l] / 4096.0;
+            out[3*32*32 + k*32 + l] = (double)s.bg3[k][l] / 2048.0 - 0.5;
         }
     }
     for (int i=0; i<6; i++) {
