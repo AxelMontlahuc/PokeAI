@@ -12,7 +12,7 @@
 #include "reward.h"
 
 double* forward(LSTM* network, double* data, double temperature);
-double* backpropagation(LSTM* network, double* data, double learningRate, int steps, trajectory* trajectories, double temperature, double epsilon);
+double* backpropagation(LSTM* network, double* data, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, double epsilon);
 double* discountedPNL(double* rewards, double gamma, int steps, bool normalize);
 
 #endif

@@ -97,8 +97,9 @@ int main() {
         printf("Initialized new model (input=%d, hidden=%d)\n", inputSize, hiddenSize);
     }
 
-    int trajectories = 30;
+    int trajectories = 32;
     int steps = 64;
+    int batch_size = 8;
 
     int episode = 0;
 
@@ -138,18 +139,23 @@ int main() {
         temperature = fmax(1.0, 3.0 * pow(0.97, (double)episode));
         epsilon = fmax(0.02, 0.2 * pow(0.99, (double)episode));
         
-        for (int t=0; t<trajectories; t++) {
-            trajectory* traj = runTrajectory(conn, network, steps, temperature, epsilon);
+        for (int t=0; t<trajectories; t += batch_size) {
+            int m = (t + batch_size <= trajectories) ? batch_size : (trajectories - t);
+            trajectory** batch = malloc(m * sizeof(trajectory*));
+            assert(batch != NULL);
 
-            double ret = 0.0;
-            for (int i=0; i<steps; i++) ret += traj->rewards[i];
-            printf("Trajectory %d: return=%lf\n", t+1, ret);
+            for (int b=0; b<m; b++) {
+                int idx = t + b;
+                batch[b] = runTrajectory(conn, network, steps, temperature, epsilon);
+                double ret = 0.0;
+                for (int i=0; i<steps; i++) ret += batch[b]->rewards[i];
+                printf("Trajectory %d: return=%lf\n", idx+1, ret);
+            }
 
-            double* data = convertState(traj->states[0]);
-            backpropagation(network, data, 0.01, steps, traj, temperature, epsilon);
-            
-            free(data);
-            freeTrajectory(traj);
+            backpropagation(network, NULL, 0.01, steps, batch, m, temperature, epsilon);
+
+            for (int b=0; b<m; b++) freeTrajectory(batch[b]);
+            free(batch);
 
             if (stop()) {
                 printf("Objective met.\n");
