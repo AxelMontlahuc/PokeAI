@@ -439,13 +439,28 @@ double* dL_dBo(double* cellState, double* oArray, int hiddenSize) {
     return grad;
 }
 
-double* discountedPNL(state* etats, double gamma, int steps) {
+double* discountedPNL(double* rewards, double gamma, int steps, bool normalize) {
     double* G = calloc(steps, sizeof(double));
     assert(G != NULL);
-    
+    if (steps <= 0) return G;
+
+    G[steps - 1] = rewards[steps - 1];
     for (int t = steps - 2; t >= 0; t--) {
-        double r = pnl(etats[t], etats[t+1]);
-        G[t] = r + gamma * G[t+1];
+        G[t] = rewards[t] + gamma * G[t+1];
+    }
+
+    if (normalize) {
+        double mean = 0.0;
+        for (int t = 0; t < steps; t++) mean += G[t];
+        mean /= (double)steps;
+        double var = 0.0;
+        for (int t = 0; t < steps; t++) {
+            double d = G[t] - mean;
+            var += d * d;
+        }
+        var /= (double)steps;
+        double std = sqrt(var) + 1e-8;
+        for (int t = 0; t < steps; t++) G[t] = (G[t] - mean) / std;
     }
 
     return G;
@@ -743,7 +758,7 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
         for (int j = 0; j < H; j++) cprev_vec[j] = c[t][j];
     }
 
-    double* G = discountedPNL(trajectories->states, 0.9, T);
+    double* G = discountedPNL(trajectories->rewards, 0.9, T, true);
 
     double** dWf = malloc(Z * sizeof(double*));
     double** dWi = malloc(Z * sizeof(double*));
