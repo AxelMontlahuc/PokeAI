@@ -1,4 +1,5 @@
 #include "policy.h"
+#include "state.h"
 
 double* forgetGate(LSTM* network, double* state) {
     double* result = malloc(network->hiddenSize * sizeof(double));
@@ -663,82 +664,253 @@ double* getAdvantageBg(LSTM* network, double* iArray, double* gArray, double* oA
 }
 
 double* backpropagation(LSTM* network, double* data, double learningRate, int steps, trajectory* trajectories) {
-    double* cellPrev = malloc(network->hiddenSize * sizeof(double));
-    assert(cellPrev != NULL);
-    for (int i = 0; i < network->hiddenSize; i++) {
-        cellPrev[i] = network->cellState[i];
-    }
+    (void)data;
+    int H = network->hiddenSize;
+    int I = network->inputSize;
+    int Z = I + H;
+    int T = steps;
 
-    double* combinedState = malloc((network->hiddenSize + network->inputSize) * sizeof(double));
-    assert(combinedState != NULL);
+    double** x = malloc(T * sizeof(double*));
+    double** z = malloc(T * sizeof(double*));
+    double** f = malloc(T * sizeof(double*));
+    double** i = malloc(T * sizeof(double*));
+    double** g = malloc(T * sizeof(double*));
+    double** o = malloc(T * sizeof(double*));
+    double** c = malloc(T * sizeof(double*));
+    double** h = malloc(T * sizeof(double*));
+    double** cprev = malloc(T * sizeof(double*));
+    assert(x != NULL && z != NULL && f != NULL && i != NULL && g != NULL && o != NULL && c != NULL && h != NULL && cprev != NULL);
 
-    for (int i = 0; i < network->inputSize; i++) {
-        combinedState[i] = data[i];
-    }
-    for (int i = 0; i < network->hiddenSize; i++) combinedState[i + network->inputSize] = network->hiddenState[i];
+    double* hprev = calloc(H, sizeof(double));
+    double* cprev_vec = calloc(H, sizeof(double));
+    assert(hprev != NULL && cprev_vec != NULL);
 
-    double* fArray = forgetGate(network, combinedState);
-    double* iArray = inputGate(network, combinedState);
-    double* gArray = cellGate(network, combinedState);
-    double* oArray = outputGate(network, combinedState);
+    for (int t = 0; t < T; t++) {
+        x[t] = convertState(trajectories->states[t]);
+        z[t] = malloc(Z * sizeof(double));
+        assert(z[t] != NULL);
+        for (int a = 0; a < I; a++) z[t][a] = x[t][a];
+        for (int a = 0; a < H; a++) z[t][I + a] = hprev[a];
 
-    for (int i=0; i<network->hiddenSize; i++) {
-        network->cellState[i] = fArray[i] * network->cellState[i] + iArray[i] * gArray[i];
-        network->hiddenState[i] = oArray[i] * tanh(network->cellState[i]);
-    }
+        f[t] = malloc(H * sizeof(double));
+        i[t] = malloc(H * sizeof(double));
+        g[t] = malloc(H * sizeof(double));
+        o[t] = malloc(H * sizeof(double));
+        c[t] = malloc(H * sizeof(double));
+        h[t] = malloc(H * sizeof(double));
+        cprev[t] = malloc(H * sizeof(double));
+        assert(f[t] != NULL && i[t] != NULL && g[t] != NULL && o[t] != NULL && c[t] != NULL && h[t] != NULL && cprev[t] != NULL);
 
-    double* rewards = discountedPNL(trajectories->states, 0.9, steps);
+        for (int j = 0; j < H; j++) cprev[t][j] = cprev_vec[j];
 
-    double** advantageWf = getAdvantageWf(network, combinedState, oArray, fArray, cellPrev, trajectories->probs, trajectories->actions, steps, rewards);
-    double** advantageWi = getAdvantageWi(network, combinedState, oArray, gArray, iArray, trajectories->probs, trajectories->actions, steps, rewards);
-    double** advantageWg = getAdvantageWg(network, combinedState, iArray, oArray, gArray, trajectories->probs, trajectories->actions, steps, rewards);
-    double** advantageWo = getAdvantageWo(network, combinedState, oArray, trajectories->probs, trajectories->actions, steps, rewards);
-
-    double* advantageBf = getAdvantageBf(network, cellPrev, fArray, oArray, trajectories->probs, trajectories->actions, steps, rewards);
-    double* advantageBi = getAdvantageBi(network, iArray, gArray, oArray, trajectories->probs, trajectories->actions, steps, rewards);
-    double* advantageBg = getAdvantageBg(network, iArray, gArray, oArray, trajectories->probs, trajectories->actions, steps, rewards);
-    double* advantageBo = getAdvantageBo(network, oArray, trajectories->probs, trajectories->actions, steps, rewards);
-
-    for (int i = 0; i < (network->inputSize + network->hiddenSize); i++) {
-        for (int j = 0; j < network->hiddenSize; j++) {
-            network->Wf[i][j] += learningRate * advantageWf[i][j];
-            network->Wi[i][j] += learningRate * advantageWi[i][j];
-            network->Wc[i][j] += learningRate * advantageWg[i][j];
-            network->Wo[i][j] += learningRate * advantageWo[i][j];
+        for (int j = 0; j < H; j++) {
+            double s_f = network->Bf[j];
+            for (int a = 0; a < Z; a++) s_f += z[t][a] * network->Wf[a][j];
+            f[t][j] = sigmoid(s_f);
         }
+        for (int j = 0; j < H; j++) {
+            double s_i = network->Bi[j];
+            for (int a = 0; a < Z; a++) s_i += z[t][a] * network->Wi[a][j];
+            i[t][j] = sigmoid(s_i);
+        }
+        for (int j = 0; j < H; j++) {
+            double s_g = network->Bc[j];
+            for (int a = 0; a < Z; a++) s_g += z[t][a] * network->Wc[a][j];
+            g[t][j] = tanh(s_g);
+        }
+        for (int j = 0; j < H; j++) {
+            double s_o = network->Bo[j];
+            for (int a = 0; a < Z; a++) s_o += z[t][a] * network->Wo[a][j];
+            o[t][j] = sigmoid(s_o);
+        }
+        for (int j = 0; j < H; j++) c[t][j] = f[t][j] * cprev_vec[j] + i[t][j] * g[t][j];
+        for (int j = 0; j < H; j++) h[t][j] = o[t][j] * tanh(c[t][j]);
+
+        for (int j = 0; j < H; j++) hprev[j] = h[t][j];
+        for (int j = 0; j < H; j++) cprev_vec[j] = c[t][j];
     }
 
-    for (int i = 0; i < network->hiddenSize; i++) {
-        network->Bf[i] += learningRate * advantageBf[i];
-        network->Bi[i] += learningRate * advantageBi[i];
-        network->Bc[i] += learningRate * advantageBg[i];
-        network->Bo[i] += learningRate * advantageBo[i];
+    double* G = discountedPNL(trajectories->states, 0.9, T);
+
+    double** dWf = malloc(Z * sizeof(double*));
+    double** dWi = malloc(Z * sizeof(double*));
+    double** dWc = malloc(Z * sizeof(double*));
+    double** dWo = malloc(Z * sizeof(double*));
+    assert(dWf != NULL && dWi != NULL && dWc != NULL && dWo != NULL);
+
+    for (int a = 0; a < Z; a++) {
+        dWf[a] = calloc(H, sizeof(double));
+        dWi[a] = calloc(H, sizeof(double));
+        dWc[a] = calloc(H, sizeof(double));
+        dWo[a] = calloc(H, sizeof(double));
+        assert(dWf[a] != NULL && dWi[a] != NULL && dWc[a] != NULL && dWo[a] != NULL);
     }
 
-    for (int i = 0; i < (network->inputSize + network->hiddenSize); i++) {
-        free(advantageWf[i]);
-        free(advantageWi[i]);
-        free(advantageWg[i]);
-        free(advantageWo[i]);
+    double* dBf = calloc(H, sizeof(double));
+    double* dBi = calloc(H, sizeof(double));
+    double* dBc = calloc(H, sizeof(double));
+    double* dBo = calloc(H, sizeof(double));
+    assert(dBf != NULL && dBi != NULL && dBc != NULL && dBo != NULL);
+
+    double* dh_next = calloc(H, sizeof(double));
+    double* dc_next = calloc(H, sizeof(double));
+    assert(dh_next != NULL && dc_next != NULL);
+
+    for (int t = T - 1; t >= 0; t--) {
+        int actionIndex = actionToIndex(trajectories->actions[t]);
+        double* dlogits = calloc(H, sizeof(double));
+        assert(dlogits != NULL);
+        for (int j = 0; j < H; j++) {
+            double gadv = ((j == actionIndex) ? 1.0 : 0.0) - trajectories->probs[t][j];
+            dlogits[j] = gadv * G[t];
+        }
+
+        double* dh = malloc(H * sizeof(double));
+        assert(dh != NULL);
+        for (int j = 0; j < H; j++) dh[j] = dlogits[j] + dh_next[j];
+
+        double* do_vec = malloc(H * sizeof(double));
+        assert(do_vec != NULL);
+        for (int j = 0; j < H; j++) do_vec[j] = dh[j] * tanh(c[t][j]);
+
+        double* d_o_pre = malloc(H * sizeof(double));
+        assert(d_o_pre != NULL);
+        for (int j = 0; j < H; j++) d_o_pre[j] = do_vec[j] * o[t][j] * (1.0 - o[t][j]);
+
+        double* dc = malloc(H * sizeof(double));
+        assert(dc != NULL);
+        for (int j = 0; j < H; j++) dc[j] = dh[j] * o[t][j] * (1.0 - tanh(c[t][j]) * tanh(c[t][j])) + dc_next[j];
+
+        double* df = malloc(H * sizeof(double));
+        assert(df != NULL);
+        for (int j = 0; j < H; j++) df[j] = dc[j] * cprev[t][j];
+
+        double* di_vec = malloc(H * sizeof(double));
+        assert(di_vec != NULL);
+        for (int j = 0; j < H; j++) di_vec[j] = dc[j] * g[t][j];
+
+        double* dg = malloc(H * sizeof(double));
+        assert(dg != NULL);
+        for (int j = 0; j < H; j++) dg[j] = dc[j] * i[t][j];
+
+        double* d_f_pre = malloc(H * sizeof(double));
+        assert(d_f_pre != NULL);
+        for (int j = 0; j < H; j++) d_f_pre[j] = df[j] * f[t][j] * (1.0 - f[t][j]);
+
+        double* d_i_pre = malloc(H * sizeof(double));
+        assert(d_i_pre != NULL);
+        for (int j = 0; j < H; j++) d_i_pre[j] = di_vec[j] * i[t][j] * (1.0 - i[t][j]);
+
+        double* d_g_pre = malloc(H * sizeof(double));
+        assert(d_g_pre != NULL);
+        for (int j = 0; j < H; j++) d_g_pre[j] = dg[j] * (1.0 - g[t][j] * g[t][j]);
+
+        for (int j = 0; j < H; j++) dBf[j] += d_f_pre[j];
+        for (int j = 0; j < H; j++) dBi[j] += d_i_pre[j];
+        for (int j = 0; j < H; j++) dBc[j] += d_g_pre[j];
+        for (int j = 0; j < H; j++) dBo[j] += d_o_pre[j];
+
+        for (int a = 0; a < Z; a++) {
+            for (int j = 0; j < H; j++) dWf[a][j] += z[t][a] * d_f_pre[j];
+            for (int j = 0; j < H; j++) dWi[a][j] += z[t][a] * d_i_pre[j];
+            for (int j = 0; j < H; j++) dWc[a][j] += z[t][a] * d_g_pre[j];
+            for (int j = 0; j < H; j++) dWo[a][j] += z[t][a] * d_o_pre[j];
+        }
+
+        double* dz = calloc(Z, sizeof(double));
+        assert(dz != NULL);
+        for (int a = 0; a < Z; a++) {
+            double sum = 0.0;
+            for (int j = 0; j < H; j++) sum += network->Wf[a][j] * d_f_pre[j];
+            dz[a] += sum;
+        }
+        for (int a = 0; a < Z; a++) {
+            double sum = 0.0;
+            for (int j = 0; j < H; j++) sum += network->Wi[a][j] * d_i_pre[j];
+            dz[a] += sum;
+        }
+        for (int a = 0; a < Z; a++) {
+            double sum = 0.0;
+            for (int j = 0; j < H; j++) sum += network->Wc[a][j] * d_g_pre[j];
+            dz[a] += sum;
+        }
+        for (int a = 0; a < Z; a++) {
+            double sum = 0.0;
+            for (int j = 0; j < H; j++) sum += network->Wo[a][j] * d_o_pre[j];
+            dz[a] += sum;
+        }
+
+        for (int j = 0; j < H; j++) dh_next[j] = dz[I + j];
+        for (int j = 0; j < H; j++) dc_next[j] = dc[j] * f[t][j];
+
+        free(dlogits);
+        free(dh);
+        free(do_vec);
+        free(d_o_pre);
+        free(dc);
+        free(df);
+        free(di_vec);
+        free(dg);
+        free(d_f_pre);
+        free(d_i_pre);
+        free(d_g_pre);
+        free(dz);
     }
-    free(advantageWf);
-    free(advantageWi);
-    free(advantageWg);
-    free(advantageWo);
 
-    free(advantageBf);
-    free(advantageBi);
-    free(advantageBg);
-    free(advantageBo);
+    for (int a = 0; a < Z; a++) {
+        for (int j = 0; j < H; j++) network->Wf[a][j] += learningRate * dWf[a][j];
+        for (int j = 0; j < H; j++) network->Wi[a][j] += learningRate * dWi[a][j];
+        for (int j = 0; j < H; j++) network->Wc[a][j] += learningRate * dWc[a][j];
+        for (int j = 0; j < H; j++) network->Wo[a][j] += learningRate * dWo[a][j];
+    }
+    
+    for (int j = 0; j < H; j++) network->Bf[j] += learningRate * dBf[j];
+    for (int j = 0; j < H; j++) network->Bi[j] += learningRate * dBi[j];
+    for (int j = 0; j < H; j++) network->Bc[j] += learningRate * dBc[j];
+    for (int j = 0; j < H; j++) network->Bo[j] += learningRate * dBo[j];
 
-    free(cellPrev);
-    free(combinedState);
-    free(fArray);
-    free(iArray);
-    free(gArray);
-    free(oArray);
+    for (int t = 0; t < T; t++) {
+        free(x[t]);
+        free(z[t]);
+        free(f[t]);
+        free(i[t]);
+        free(g[t]);
+        free(o[t]);
+        free(c[t]);
+        free(h[t]);
+        free(cprev[t]);
+    }
 
-    free(rewards);
+    free(x);
+    free(z);
+    free(f);
+    free(i);
+    free(g);
+    free(o);
+    free(c);
+    free(h);
+    free(cprev);
+
+    for (int a = 0; a < Z; a++) {
+        free(dWf[a]);
+        free(dWi[a]);
+        free(dWc[a]);
+        free(dWo[a]);
+    }
+
+    free(dWf);
+    free(dWi);
+    free(dWc);
+    free(dWo);
+    free(dBf);
+    free(dBi);
+    free(dBc);
+    free(dBo);
+    free(hprev);
+    free(cprev_vec);
+    free(dh_next);
+    free(dc_next);
+    free(G);
 
     return network->hiddenState;
 }
