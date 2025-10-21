@@ -1,6 +1,8 @@
 #include "policy.h"
 #include "state.h"
 
+static const double ENTROPY_COEFF = 0.01;
+
 double* forgetGate(LSTM* network, double* state) {
     double* result = malloc(network->hiddenSize * sizeof(double));
     assert(result != NULL);
@@ -268,6 +270,20 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
             double gadv = ((k == actionIndex) ? 1.0 : 0.0) - trajectories->probs[t][k];
             dlogits[k] = gadv * G[t];
         }
+
+        if (ENTROPY_COEFF > 0.0) {
+            double mean_logp = 0.0;
+            for (int k = 0; k < O; k++) {
+                double pk = trajectories->probs[t][k];
+                mean_logp += pk * log(pk + 1e-12);
+            }
+            for (int k = 0; k < O; k++) {
+                double pk = trajectories->probs[t][k];
+                double ent_grad = pk * (mean_logp - log(pk + 1e-12));
+                dlogits[k] += ENTROPY_COEFF * ent_grad;
+            }
+        }
+
         double inv_temp = 1.0 / temperature;
         double scale_eps = fmax(0.0, 1.0 - epsilon);
         for (int k = 0; k < O; k++) dlogits[k] *= (inv_temp * scale_eps);
