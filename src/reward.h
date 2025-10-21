@@ -13,5 +13,6 @@
 
 double pnl(state s, state s_next);
 bool stop();
+void reset_flags();
 
 #endif

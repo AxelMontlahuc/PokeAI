@@ -33,7 +33,7 @@ double pnl(state s, state s_next) {
         pnl += 10.0;
     }
 
-    if (!OUTDOOR_FLAG && s_next.zone == 0) {
+    if (CLOCK_FLAG && !OUTDOOR_FLAG && s_next.zone == 0) {
         OUTDOOR_FLAG = true;
         pnl += 1.0;
     }
@@ -70,4 +70,13 @@ double pnl(state s, state s_next) {
 
 bool stop() {
     return CLOCK_FLAG;
+}
+
+void reset_flags() {
+    HOUSE_FLAG = false;
+    ROOM_FLAG = false;
+    CLOCK_FLAG = false;
+    OUTDOOR_FLAG = false;
+    OPP_HOUSE_FLAG = false;
+    OPP_ROOM_FLAG = false;
 }

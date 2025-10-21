@@ -22,10 +22,10 @@
 #include "../mGBA-interface/include/mgba_map.h"
 #include "../mGBA-interface/include/mgba_intel.h"
 
-#define ACTION_COUNT 8
+#define ACTION_COUNT 7
 static const MGBAButton ACTIONS[ACTION_COUNT] = {
     MGBA_BUTTON_UP, MGBA_BUTTON_DOWN, MGBA_BUTTON_LEFT, MGBA_BUTTON_RIGHT,
-    MGBA_BUTTON_A, MGBA_BUTTON_B, MGBA_BUTTON_START, MGBA_BUTTON_SELECT
+    MGBA_BUTTON_A, MGBA_BUTTON_B, MGBA_BUTTON_START
 };
 
 MGBAButton chooseAction(double* probs) {
@@ -83,7 +83,7 @@ int main() {
     srand(seed);
 
     int inputSize = 4*(32*32) + 6*8 + 4 + 3 + 2;
-    int hiddenSize = 8;
+    int hiddenSize = ACTION_COUNT;
     LSTM* network = loadLSTM("checkpoints/model-last.bin");
     if (network) {
         printf("Loaded model from checkpoints/model-last.bin (input=%d, hidden=%d)\n", network->inputSize, network->hiddenSize);
@@ -131,13 +131,14 @@ int main() {
             free(data);
             freeTrajectory(traj);
 
-            episode++;
-
             if (stop()) {
                 printf("Objective met.\n");
                 break;
             }
         }
+
+        episode++;
+        printf("\nEpisode %llu completed.\n", episode);
 
         #ifdef _WIN32
         _mkdir("checkpoints");
@@ -149,6 +150,8 @@ int main() {
         } else {
             printf("Warning: failed to save checkpoint.\n");
         }
+
+        reset_flags();
     }
 
     freeLSTM(network);
