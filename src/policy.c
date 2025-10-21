@@ -80,13 +80,19 @@ double* forward(LSTM* network, double* data) {
         network->hiddenState[i] = oArray[i] * tanh(network->cellState[i]);
     }
 
+    for (int k=0; k<network->outputSize; k++) {
+        double s = network->Bout[k];
+        for (int j=0; j<network->hiddenSize; j++) s += network->hiddenState[j] * network->Wout[j][k];
+        network->logits[k] = s;
+    }
+
     free(combinedState);
     free(fArray);
     free(iArray);
     free(cArray);
     free(oArray);
 
-    return network->hiddenState;
+    return network->logits;
 }
 
 double* dh_dc(double* oArray, double* cellState, int size) {
@@ -667,6 +673,7 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
     int H = network->hiddenSize;
     int I = network->inputSize;
     int Z = I + H;
+    int O = network->outputSize;
     int T = steps;
 
     double** x = malloc(T * sizeof(double*));
@@ -735,7 +742,9 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
     double** dWi = malloc(Z * sizeof(double*));
     double** dWc = malloc(Z * sizeof(double*));
     double** dWo = malloc(Z * sizeof(double*));
+    double** dWout = malloc(H * sizeof(double*));
     assert(dWf != NULL && dWi != NULL && dWc != NULL && dWo != NULL);
+    assert(dWout != NULL);
 
     for (int a = 0; a < Z; a++) {
         dWf[a] = calloc(H, sizeof(double));
@@ -745,11 +754,17 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
         assert(dWf[a] != NULL && dWi[a] != NULL && dWc[a] != NULL && dWo[a] != NULL);
     }
 
+    for (int j = 0; j < H; j++) {
+        dWout[j] = calloc(O, sizeof(double));
+        assert(dWout[j] != NULL);
+    }
+
     double* dBf = calloc(H, sizeof(double));
     double* dBi = calloc(H, sizeof(double));
     double* dBc = calloc(H, sizeof(double));
     double* dBo = calloc(H, sizeof(double));
-    assert(dBf != NULL && dBi != NULL && dBc != NULL && dBo != NULL);
+    double* dBout = calloc(O, sizeof(double));
+    assert(dBf != NULL && dBi != NULL && dBc != NULL && dBo != NULL && dBout != NULL);
 
     double* dh_next = calloc(H, sizeof(double));
     double* dc_next = calloc(H, sizeof(double));
@@ -757,16 +772,25 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
 
     for (int t = T - 1; t >= 0; t--) {
         int actionIndex = actionToIndex(trajectories->actions[t]);
-        double* dlogits = calloc(H, sizeof(double));
+        double* dlogits = calloc(O, sizeof(double));
         assert(dlogits != NULL);
-        for (int j = 0; j < H; j++) {
-            double gadv = ((j == actionIndex) ? 1.0 : 0.0) - trajectories->probs[t][j];
-            dlogits[j] = gadv * G[t];
+        for (int k = 0; k < O; k++) {
+            double gadv = ((k == actionIndex) ? 1.0 : 0.0) - trajectories->probs[t][k];
+            dlogits[k] = gadv * G[t];
         }
 
         double* dh = malloc(H * sizeof(double));
         assert(dh != NULL);
-        for (int j = 0; j < H; j++) dh[j] = dlogits[j] + dh_next[j];
+        for (int j = 0; j < H; j++) {
+            double sum = 0.0;
+            for (int k = 0; k < O; k++) sum += network->Wout[j][k] * dlogits[k];
+            dh[j] = sum + dh_next[j];
+        }
+
+        for (int j = 0; j < H; j++) {
+            for (int k = 0; k < O; k++) dWout[j][k] += h[t][j] * dlogits[k];
+        }
+        for (int k = 0; k < O; k++) dBout[k] += dlogits[k];
 
         double* do_vec = malloc(H * sizeof(double));
         assert(do_vec != NULL);
@@ -863,10 +887,15 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
         for (int j = 0; j < H; j++) network->Wo[a][j] += learningRate * dWo[a][j];
     }
 
+    for (int j = 0; j < H; j++) {
+        for (int k = 0; k < O; k++) network->Wout[j][k] += learningRate * dWout[j][k];
+    }
+
     for (int j = 0; j < H; j++) network->Bf[j] += learningRate * dBf[j];
     for (int j = 0; j < H; j++) network->Bi[j] += learningRate * dBi[j];
     for (int j = 0; j < H; j++) network->Bc[j] += learningRate * dBc[j];
     for (int j = 0; j < H; j++) network->Bo[j] += learningRate * dBo[j];
+    for (int k = 0; k < O; k++) network->Bout[k] += learningRate * dBout[k];
 
     for (int t = 0; t < T; t++) {
         free(x[t]);
@@ -896,15 +925,17 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
         free(dWc[a]);
         free(dWo[a]);
     }
-
+    for (int j = 0; j < H; j++) free(dWout[j]);
     free(dWf);
     free(dWi);
     free(dWc);
     free(dWo);
+    free(dWout);
     free(dBf);
     free(dBi);
     free(dBc);
     free(dBo);
+    free(dBout);
     free(hprev);
     free(cprev_vec);
     free(dh_next);

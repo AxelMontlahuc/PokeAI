@@ -23,7 +23,6 @@
 #include "../mGBA-interface/include/mgba_map.h"
 #include "../mGBA-interface/include/mgba_intel.h"
 
-#define ACTION_COUNT 7
 static const MGBAButton ACTIONS[ACTION_COUNT] = {
     MGBA_BUTTON_UP, MGBA_BUTTON_DOWN, MGBA_BUTTON_LEFT, MGBA_BUTTON_RIGHT,
     MGBA_BUTTON_A, MGBA_BUTTON_B, MGBA_BUTTON_START
@@ -66,7 +65,6 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         } else {
             traj->actions[i] = chooseAction(distribution);
         }
-        traj->actions[i] = chooseAction(traj->probs[i]);
 
         mgba_press_button(&conn, traj->actions[i], 50);
 
@@ -89,7 +87,7 @@ int main() {
     srand(seed);
 
     int inputSize = 4*(32*32) + 6*8 + 4 + 3 + 2;
-    int hiddenSize = ACTION_COUNT;
+    int hiddenSize = 128;
 
     uint64_t loaded_episodes = 0ULL;
     uint64_t loaded_seed = 0ULL;
@@ -98,7 +96,7 @@ int main() {
     if (network) {
         printf("Loaded model from checkpoints/model-last.bin (input=%d, hidden=%d)\n", network->inputSize, network->hiddenSize);
     } else {
-        network = initLSTM(inputSize, hiddenSize);
+    network = initLSTM(inputSize, hiddenSize, ACTION_COUNT);
         printf("Initialized new model (input=%d, hidden=%d)\n", inputSize, hiddenSize);
     }
 

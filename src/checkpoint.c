@@ -17,9 +17,10 @@ int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_
 
     char magic[8];
     memcpy(magic, "LSTMBIN\0", 8);
-    uint32_t version = 2u;
+    uint32_t version = 3u;
     uint32_t inputSize = (uint32_t)net->inputSize;
     uint32_t hiddenSize = (uint32_t)net->hiddenSize;
+    uint32_t outputSize = (uint32_t)net->outputSize;
     uint64_t episodes = step;
     uint64_t seed = rng_seed;
 
@@ -27,6 +28,7 @@ int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_
     if (write_exact(f, &version, sizeof(version)) != 0) { fclose(f); return -1; }
     if (write_exact(f, &inputSize, sizeof(inputSize)) != 0) { fclose(f); return -1; }
     if (write_exact(f, &hiddenSize, sizeof(hiddenSize)) != 0) { fclose(f); return -1; }
+    if (write_exact(f, &outputSize, sizeof(outputSize)) != 0) { fclose(f); return -1; }
     if (write_exact(f, &episodes, sizeof(episodes)) != 0) { fclose(f); return -1; }
     if (write_exact(f, &seed, sizeof(seed)) != 0) { fclose(f); return -1; }
 
@@ -48,6 +50,11 @@ int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_
     if (write_exact(f, net->Bc, sizeof(double)*net->hiddenSize) != 0) { fclose(f); return -1; }
     if (write_exact(f, net->Bo, sizeof(double)*net->hiddenSize) != 0) { fclose(f); return -1; }
 
+    for (int j=0;j<net->hiddenSize;j++) {
+        if (write_exact(f, net->Wout[j], sizeof(double)*net->outputSize) != 0) { fclose(f); return -1; }
+    }
+    if (write_exact(f, net->Bout, sizeof(double)*net->outputSize) != 0) { fclose(f); return -1; }
+
     if (write_exact(f, net->hiddenState, sizeof(double)*net->hiddenSize) != 0) { fclose(f); return -1; }
     if (write_exact(f, net->cellState, sizeof(double)*net->hiddenSize) != 0) { fclose(f); return -1; }
 
@@ -63,19 +70,23 @@ int loadLSTMCheckpoint(const char* path, LSTM* net, uint64_t* step, uint64_t* rn
     uint32_t version;
     uint32_t inputSize;
     uint32_t hiddenSize;
+    uint32_t outputSize = ACTION_COUNT;
     uint64_t episodes_or_step;
     uint64_t seed;
 
     if (read_exact(f, magic, sizeof(magic)) != 0) { fclose(f); return -1; }
     if (memcmp(magic, "LSTMBIN\0", 8) != 0) { fclose(f); return -1; }
     if (read_exact(f, &version, sizeof(version)) != 0) { fclose(f); return -1; }
-    if (version != 1u && version != 2u) { fclose(f); return -1; }
+    if (version != 1u && version != 2u && version != 3u) { fclose(f); return -1; }
     if (read_exact(f, &inputSize, sizeof(inputSize)) != 0) { fclose(f); return -1; }
     if (read_exact(f, &hiddenSize, sizeof(hiddenSize)) != 0) { fclose(f); return -1; }
+    if (version >= 3u) {
+        if (read_exact(f, &outputSize, sizeof(outputSize)) != 0) { fclose(f); return -1; }
+    }
     if (read_exact(f, &episodes_or_step, sizeof(episodes_or_step)) != 0) { fclose(f); return -1; }
     if (read_exact(f, &seed, sizeof(seed)) != 0) { fclose(f); return -1; }
 
-    if (inputSize != (uint32_t)net->inputSize || hiddenSize != (uint32_t)net->hiddenSize) { fclose(f); return -1; }
+    if (inputSize != (uint32_t)net->inputSize || hiddenSize != (uint32_t)net->hiddenSize || outputSize != (uint32_t)net->outputSize) { fclose(f); return -1; }
     if (step) *step = episodes_or_step;
     if (rng_seed) *rng_seed = seed;
 
@@ -97,6 +108,13 @@ int loadLSTMCheckpoint(const char* path, LSTM* net, uint64_t* step, uint64_t* rn
     if (read_exact(f, net->Bc, sizeof(double)*net->hiddenSize) != 0) { fclose(f); return -1; }
     if (read_exact(f, net->Bo, sizeof(double)*net->hiddenSize) != 0) { fclose(f); return -1; }
 
+    if (version >= 3u) {
+        for (int j=0;j<net->hiddenSize;j++) {
+            if (read_exact(f, net->Wout[j], sizeof(double)*net->outputSize) != 0) { fclose(f); return -1; }
+        }
+        if (read_exact(f, net->Bout, sizeof(double)*net->outputSize) != 0) { fclose(f); return -1; }
+    }
+
     if (read_exact(f, net->hiddenState, sizeof(double)*net->hiddenSize) != 0) { fclose(f); return -1; }
     if (read_exact(f, net->cellState, sizeof(double)*net->hiddenSize) != 0) { fclose(f); return -1; }
 
@@ -112,19 +130,23 @@ LSTM* loadLSTM(const char* path, uint64_t* episodes, uint64_t* rng_seed) {
     uint32_t version;
     uint32_t inputSize;
     uint32_t hiddenSize;
+    uint32_t outputSize = ACTION_COUNT;
     uint64_t episodes_or_step;
     uint64_t seed;
 
     if (read_exact(f, magic, sizeof(magic)) != 0) { fclose(f); return NULL; }
     if (memcmp(magic, "LSTMBIN\0", 8) != 0) { fclose(f); return NULL; }
     if (read_exact(f, &version, sizeof(version)) != 0) { fclose(f); return NULL; }
-    if (version != 1u && version != 2u) { fclose(f); return NULL; }
+    if (version != 1u && version != 2u && version != 3u) { fclose(f); return NULL; }
     if (read_exact(f, &inputSize, sizeof(inputSize)) != 0) { fclose(f); return NULL; }
     if (read_exact(f, &hiddenSize, sizeof(hiddenSize)) != 0) { fclose(f); return NULL; }
+    if (version >= 3u) {
+        if (read_exact(f, &outputSize, sizeof(outputSize)) != 0) { fclose(f); return NULL; }
+    }
     if (read_exact(f, &episodes_or_step, sizeof(episodes_or_step)) != 0) { fclose(f); return NULL; }
     if (read_exact(f, &seed, sizeof(seed)) != 0) { fclose(f); return NULL; }
 
-    LSTM* net = initLSTM((int)inputSize, (int)hiddenSize);
+    LSTM* net = initLSTM((int)inputSize, (int)hiddenSize, (int)outputSize);
     if (!net) { fclose(f); return NULL; }
 
     for (int i=0;i<net->inputSize + net->hiddenSize;i++) {
@@ -144,6 +166,13 @@ LSTM* loadLSTM(const char* path, uint64_t* episodes, uint64_t* rng_seed) {
     if (read_exact(f, net->Bi, sizeof(double)*net->hiddenSize) != 0) { fclose(f); freeLSTM(net); return NULL; }
     if (read_exact(f, net->Bc, sizeof(double)*net->hiddenSize) != 0) { fclose(f); freeLSTM(net); return NULL; }
     if (read_exact(f, net->Bo, sizeof(double)*net->hiddenSize) != 0) { fclose(f); freeLSTM(net); return NULL; }
+
+    if (version >= 3u) {
+        for (int j=0;j<net->hiddenSize;j++) {
+            if (read_exact(f, net->Wout[j], sizeof(double)*net->outputSize) != 0) { fclose(f); freeLSTM(net); return NULL; }
+        }
+        if (read_exact(f, net->Bout, sizeof(double)*net->outputSize) != 0) { fclose(f); freeLSTM(net); return NULL; }
+    }
 
     if (read_exact(f, net->hiddenState, sizeof(double)*net->hiddenSize) != 0) { fclose(f); freeLSTM(net); return NULL; }
     if (read_exact(f, net->cellState, sizeof(double)*net->hiddenSize) != 0) { fclose(f); freeLSTM(net); return NULL; }

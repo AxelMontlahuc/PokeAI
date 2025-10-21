@@ -12,6 +12,8 @@
 
 #define typeshit typedef
 
+#define ACTION_COUNT 7
+
 typeshit struct pokemon {
     int maxHP;
     int HP;
@@ -42,19 +44,23 @@ typeshit struct state {
 typeshit struct LSTM {
     int inputSize;
     int hiddenSize;
+    int outputSize;
 
     double* hiddenState;
     double* cellState;
+    double* logits;
 
     double** Wf;
     double** Wi;
     double** Wc;
     double** Wo;
+    double** Wout;
 
     double* Bf;
     double* Bi;
     double* Bc;
     double* Bo;
+    double* Bout;
 } LSTM;
 
 typeshit struct trajectory {
@@ -66,7 +72,7 @@ typeshit struct trajectory {
 } trajectory;
 
 void freeState(state s);
-LSTM* initLSTM(int inputSize, int hiddenSize);
+LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize);
 void freeLSTM(LSTM* network);
 trajectory* initTrajectory(int steps);
 void freeTrajectory(trajectory* traj);

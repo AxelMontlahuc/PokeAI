@@ -19,16 +19,18 @@ double xavierInitialization(double fanIn, double fanOut) {
     return (2.0*((double)rand() / (double)RAND_MAX)-1.0) * sqrt(6.0 / (fanIn + fanOut));
 }
 
-LSTM* initLSTM(int inputSize, int hiddenSize) {
+LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize) {
     LSTM* network = malloc(sizeof(LSTM));
     assert(network != NULL);
 
     network->inputSize = inputSize;
     network->hiddenSize = hiddenSize;
+    network->outputSize = outputSize;
 
     network->hiddenState = calloc(hiddenSize, sizeof(double));
     network->cellState = calloc(hiddenSize, sizeof(double));
-    assert(network->hiddenState != NULL && network->cellState != NULL);
+    network->logits = calloc(network->outputSize, sizeof(double));
+    assert(network->hiddenState != NULL && network->cellState != NULL && network->logits != NULL);
 
     network->Wf = malloc((inputSize + hiddenSize) * sizeof(double*));
     network->Wi = malloc((inputSize + hiddenSize) * sizeof(double*));
@@ -64,12 +66,25 @@ LSTM* initLSTM(int inputSize, int hiddenSize) {
         network->Bo[i] = 0.0;
     }
 
+    network->Wout = malloc(network->hiddenSize * sizeof(double*));
+    assert(network->Wout != NULL);
+    for (int i=0; i<network->hiddenSize; i++) {
+    network->Wout[i] = malloc(network->outputSize * sizeof(double));
+        assert(network->Wout[i] != NULL);
+        for (int j=0; j<network->outputSize; j++) {
+            network->Wout[i][j] = xavierInitialization(network->hiddenSize, network->outputSize);
+        }
+    }
+    network->Bout = calloc(network->outputSize, sizeof(double));
+    assert(network->Bout != NULL);
+
     return network;
 }
 
 void freeLSTM(LSTM* network) {
     free(network->hiddenState);
     free(network->cellState);
+    free(network->logits);
 
     for (int i=0; i<(network->inputSize + network->hiddenSize); i++) {
         free(network->Wf[i]);
@@ -87,6 +102,12 @@ void freeLSTM(LSTM* network) {
     free(network->Bi);
     free(network->Bc);
     free(network->Bo);
+
+    for (int i=0; i<network->hiddenSize; i++) {
+        free(network->Wout[i]);
+    }
+    free(network->Wout);
+    free(network->Bout);
 
     free(network);
 }
