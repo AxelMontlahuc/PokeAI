@@ -15,6 +15,10 @@ double heInitialization(double fanIn) {
     return (2.0*((double)rand() / (double)RAND_MAX)-1.0) * sqrt(2.0 / fanIn);
 }
 
+double xavierInitialization(double fanIn, double fanOut) {
+    return (2.0*((double)rand() / (double)RAND_MAX)-1.0) * sqrt(6.0 / (fanIn + fanOut));
+}
+
 LSTM* initLSTM(int inputSize, int hiddenSize) {
     LSTM* network = malloc(sizeof(LSTM));
     assert(network != NULL);
@@ -40,10 +44,10 @@ LSTM* initLSTM(int inputSize, int hiddenSize) {
         assert(network->Wf[i] != NULL && network->Wi[i] != NULL && network->Wc[i] != NULL && network->Wo[i] != NULL);
 
         for (int j=0; j<hiddenSize; j++) {
-            network->Wf[i][j] = heInitialization(inputSize + hiddenSize);
-            network->Wi[i][j] = heInitialization(inputSize + hiddenSize);
-            network->Wc[i][j] = heInitialization(inputSize + hiddenSize);
-            network->Wo[i][j] = heInitialization(inputSize + hiddenSize);
+            network->Wf[i][j] = xavierInitialization(inputSize, hiddenSize);
+            network->Wi[i][j] = xavierInitialization(inputSize, hiddenSize);
+            network->Wc[i][j] = xavierInitialization(inputSize, hiddenSize);
+            network->Wo[i][j] = xavierInitialization(inputSize, hiddenSize);
         }
     }
 
