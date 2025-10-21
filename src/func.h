@@ -6,8 +6,6 @@
 #include <stdio.h>
 #include <assert.h>
 
-double sigmoid(double x);
-double mse(double pred, double target);
-double softmax(double* tab, int n, int i);
+double sigmoid(double x); 
 
 #endif
