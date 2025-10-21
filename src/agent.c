@@ -146,7 +146,7 @@ int main() {
             printf("Trajectory %d: return=%lf\n", t+1, ret);
 
             double* data = convertState(traj->states[0]);
-            backpropagation(network, data, 0.01, steps, traj);
+            backpropagation(network, data, 0.01, steps, traj, temperature, epsilon);
             
             free(data);
             freeTrajectory(traj);
