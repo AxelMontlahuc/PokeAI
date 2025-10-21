@@ -207,9 +207,9 @@ double** do_dWo(LSTM* network, double* oArray, double* newHiddenState) {
     return grad;
 }
 
-double** dL_dWf(LSTM* network, double* z, double* oArray, double* fArray) {
+double** dL_dWf(LSTM* network, double* z, double* oArray, double* fArray, double* cellPrev) {
     double* dh_dc_grad = dh_dc(oArray, network->cellState, network->hiddenSize);
-    double* dc_df_grad = dc_df(network->cellState, network->hiddenSize);
+    double* dc_df_grad = dc_df(cellPrev, network->hiddenSize);
     double** df_dWf_grad = df_dWf(network, fArray, z);
 
     double** dL_dWf = malloc((network->inputSize + network->hiddenSize) * sizeof(double*));
@@ -465,7 +465,7 @@ static int actionToIndex(MGBAButton action) {
     }
 }
 
-double** getAdvantageWf(LSTM* network, double* z, double* oArray, double* fArray, double** probs, MGBAButton* actions, int steps, double* reward) {
+double** getAdvantageWf(LSTM* network, double* z, double* oArray, double* fArray, double* cellPrev, double** probs, MGBAButton* actions, int steps, double* reward) {
     double** output = malloc((network->hiddenSize + network->inputSize) * sizeof(double*));
     assert(output != NULL);
     for (int i = 0; i < (network->hiddenSize + network->inputSize); i++) {
@@ -473,7 +473,7 @@ double** getAdvantageWf(LSTM* network, double* z, double* oArray, double* fArray
         assert(output[i] != NULL);
     }
 
-    double** dlogits_dWf = dL_dWf(network, z, oArray, fArray);
+    double** dlogits_dWf = dL_dWf(network, z, oArray, fArray, cellPrev);
 
     for (int k=0; k<steps; k++) {
         double r = reward[k];
@@ -689,7 +689,7 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
 
     double* rewards = discountedPNL(trajectories->states, 0.9, steps);
 
-    double** advantageWf = getAdvantageWf(network, combinedState, oArray, fArray, trajectories->probs, trajectories->actions, steps, rewards);
+    double** advantageWf = getAdvantageWf(network, combinedState, oArray, fArray, cellPrev, trajectories->probs, trajectories->actions, steps, rewards);
     double** advantageWi = getAdvantageWi(network, combinedState, oArray, gArray, iArray, trajectories->probs, trajectories->actions, steps, rewards);
     double** advantageWg = getAdvantageWg(network, combinedState, iArray, oArray, gArray, trajectories->probs, trajectories->actions, steps, rewards);
     double** advantageWo = getAdvantageWo(network, combinedState, oArray, trajectories->probs, trajectories->actions, steps, rewards);
