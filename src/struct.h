@@ -49,6 +49,7 @@ typeshit struct LSTM {
     double* hiddenState;
     double* cellState;
     double* logits;
+    double* probs;
 
     double** Wf;
     double** Wi;

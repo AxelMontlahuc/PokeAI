@@ -11,10 +11,9 @@
 #include "func.h"
 #include "reward.h"
 
-double* forward(LSTM* network, double* data);
+double* forward(LSTM* network, double* data, double temperature);
 double* backpropagation(LSTM* network, double* data, double learningRate, int steps, trajectory* trajectories);
 double pnl(state s_t, state s_t_suite);
 double* discountedPNL(state* etats, double gamma, int nb_traj);
-double* softmaxLayer(double* logits, int n, double temperature);
 
 #endif

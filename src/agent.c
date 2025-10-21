@@ -53,8 +53,7 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         traj->states[i] = fetchState(conn);
 
         double* input_vec = convertState(traj->states[i]);
-        double* hidden = forward(network, input_vec);
-        double* distribution = softmaxLayer(hidden, ACTION_COUNT, temperature);
+        double* distribution = forward(network, input_vec, temperature);
 
         traj->probs[i] = malloc(ACTION_COUNT * sizeof(double));
         assert(traj->probs[i] != NULL);
@@ -71,8 +70,6 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         state s_next = fetchState(conn);
         traj->rewards[i] = pnl(traj->states[i], s_next);
 
-        free(distribution);
-        free(input_vec);
         freeState(s_next);
     }
 

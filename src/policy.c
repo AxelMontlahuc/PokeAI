@@ -61,7 +61,7 @@ double* outputGate(LSTM* network, double* state) {
     return result;
 }
 
-double* forward(LSTM* network, double* data) {
+double* forward(LSTM* network, double* data, double temperature) {
     double* combinedState = malloc((network->hiddenSize + network->inputSize) * sizeof(double));
     assert(combinedState != NULL);
 
@@ -86,13 +86,22 @@ double* forward(LSTM* network, double* data) {
         network->logits[k] = s;
     }
 
+    double sum = 0.0;
+    for (int k=0; k<network->outputSize; k++) {
+        network->probs[k] = exp(network->logits[k] / temperature);
+        sum += network->probs[k];
+    }
+    for (int k=0; k<network->outputSize; k++) {
+        network->probs[k] /= sum;
+    }
+
     free(combinedState);
     free(fArray);
     free(iArray);
     free(cArray);
     free(oArray);
 
-    return network->logits;
+    return network->probs;
 }
 
 double* dh_dc(double* oArray, double* cellState, int size) {
@@ -442,20 +451,18 @@ double* discountedPNL(state* etats, double gamma, int steps) {
     return G;
 }
 
-double* softmaxLayer(double* logits, int n, double temperature) {
-    double* probs = malloc(n * sizeof(double));
-    assert(probs != NULL);
-
-    double sum = 0.0;
-    for (int i=0; i<n; i++) {
-        probs[i] = exp(logits[i] / temperature);
-        sum += probs[i];
+void dL_dWout(LSTM* network, double* dlogits, double* h_t, double** dWout, double* dBout, double* dh_accum) {
+    int H = network->hiddenSize;
+    int O = network->outputSize;
+    for (int j = 0; j < H; j++) {
+        for (int k = 0; k < O; k++) dWout[j][k] += h_t[j] * dlogits[k];
     }
-    for (int i=0; i<n; i++) {
-        probs[i] /= sum;
+    for (int k = 0; k < O; k++) dBout[k] += dlogits[k];
+    for (int j = 0; j < H; j++) {
+        double s = 0.0;
+        for (int k = 0; k < O; k++) s += network->Wout[j][k] * dlogits[k];
+        dh_accum[j] += s;
     }
-
-    return probs;
 }
 
 static int actionToIndex(MGBAButton action) {
@@ -781,16 +788,8 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
 
         double* dh = malloc(H * sizeof(double));
         assert(dh != NULL);
-        for (int j = 0; j < H; j++) {
-            double sum = 0.0;
-            for (int k = 0; k < O; k++) sum += network->Wout[j][k] * dlogits[k];
-            dh[j] = sum + dh_next[j];
-        }
-
-        for (int j = 0; j < H; j++) {
-            for (int k = 0; k < O; k++) dWout[j][k] += h[t][j] * dlogits[k];
-        }
-        for (int k = 0; k < O; k++) dBout[k] += dlogits[k];
+        for (int j = 0; j < H; j++) dh[j] = dh_next[j];
+        dL_dWout(network, dlogits, h[t], dWout, dBout, dh);
 
         double* do_vec = malloc(H * sizeof(double));
         assert(do_vec != NULL);

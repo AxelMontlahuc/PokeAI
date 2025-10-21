@@ -30,7 +30,8 @@ LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize) {
     network->hiddenState = calloc(hiddenSize, sizeof(double));
     network->cellState = calloc(hiddenSize, sizeof(double));
     network->logits = calloc(network->outputSize, sizeof(double));
-    assert(network->hiddenState != NULL && network->cellState != NULL && network->logits != NULL);
+    network->probs = calloc(network->outputSize, sizeof(double));
+    assert(network->hiddenState != NULL && network->cellState != NULL && network->logits != NULL && network->probs != NULL);
 
     network->Wf = malloc((inputSize + hiddenSize) * sizeof(double*));
     network->Wi = malloc((inputSize + hiddenSize) * sizeof(double*));
@@ -85,6 +86,7 @@ void freeLSTM(LSTM* network) {
     free(network->hiddenState);
     free(network->cellState);
     free(network->logits);
+    free(network->probs);
 
     for (int i=0; i<(network->inputSize + network->hiddenSize); i++) {
         free(network->Wf[i]);
