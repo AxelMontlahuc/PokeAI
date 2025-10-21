@@ -40,7 +40,7 @@ MGBAButton chooseAction(double* probs) {
     return ACTIONS[5];
 }
 
-trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double temperature) {
+trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double temperature, double epsilon) {
     trajectory* traj = initTrajectory(steps);
     assert(traj != NULL);
 
@@ -59,9 +59,14 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         traj->probs[i] = malloc(ACTION_COUNT * sizeof(double));
         assert(traj->probs[i] != NULL);
 
-        for (int k=0; k<ACTION_COUNT; k++) traj->probs[i][k] = distribution[k]; 
+        for (int k=0; k<ACTION_COUNT; k++) traj->probs[i][k] = distribution[k];
+        if (((double)rand() / RAND_MAX) < epsilon) {
+            traj->actions[i] = ACTIONS[rand() % ACTION_COUNT];
+        } else {
+            traj->actions[i] = chooseAction(distribution);
+        }
         traj->actions[i] = chooseAction(traj->probs[i]);
-
+        
         mgba_press_button(&conn, traj->actions[i], 50);
 
         state s_next = fetchState(conn);
@@ -96,6 +101,7 @@ int main() {
     int steps = 64;
     int episode = 0;
     double temperature = 1.0;
+    double epsilon = 0.2;
 
     while (true) {
         mgba_reset(&conn);
@@ -120,9 +126,10 @@ int main() {
         printf("Game Initialized\n\n");
 
         temperature = fmax(1.0, 3.0 * pow(0.97, (double)episode));
+        epsilon = fmax(0.02, 0.2 * pow(0.99, (double)episode));
         
         for (int t=0; t<trajectories; t++) {
-            trajectory* traj = runTrajectory(conn, network, steps, temperature);
+            trajectory* traj = runTrajectory(conn, network, steps, temperature, epsilon);
 
             double ret = 0.0;
             for (int i=0; i<steps; i++) ret += traj->rewards[i];
