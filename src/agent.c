@@ -40,7 +40,7 @@ MGBAButton chooseAction(double* probs) {
     return ACTIONS[5];
 }
 
-trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps) {
+trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double temperature) {
     trajectory* traj = initTrajectory(steps);
     assert(traj != NULL);
 
@@ -54,7 +54,7 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps) {
 
         double* input_vec = convertState(traj->states[i]);
         double* hidden = forward(network, input_vec);
-        double* distribution = softmaxLayer(hidden, ACTION_COUNT);
+        double* distribution = softmaxLayer(hidden, ACTION_COUNT, temperature);
 
         traj->probs[i] = malloc(ACTION_COUNT * sizeof(double));
         assert(traj->probs[i] != NULL);
@@ -94,7 +94,8 @@ int main() {
 
     int trajectories = 30;
     int steps = 64;
-    unsigned long long episode = 0ULL;
+    int episode = 0;
+    double temperature = 1.0;
 
     while (true) {
         mgba_reset(&conn);
@@ -118,9 +119,11 @@ int main() {
         mgba_press_button(&conn, MGBA_BUTTON_B, 50);
         printf("Game Initialized\n\n");
 
+        temperature = fmax(1.0, 3.0 * pow(0.97, (double)episode));
+        
         for (int t=0; t<trajectories; t++) {
-            trajectory* traj = runTrajectory(conn, network, steps);
-            
+            trajectory* traj = runTrajectory(conn, network, steps, temperature);
+
             double ret = 0.0;
             for (int i=0; i<steps; i++) ret += traj->rewards[i];
             printf("Trajectory %d: return=%lf\n", t+1, ret);
@@ -138,7 +141,7 @@ int main() {
         }
 
         episode++;
-        printf("\nEpisode %llu completed.\n", episode);
+        printf("\nEpisode %d completed.\n", episode);
 
         #ifdef _WIN32
         _mkdir("checkpoints");
@@ -146,7 +149,7 @@ int main() {
         mkdir("checkpoints", 0755);
         #endif
         if (saveLSTMCheckpoint("checkpoints/model-last.bin", network, (uint64_t)episode, (uint64_t)seed) == 0) {
-            printf("Saved checkpoint: checkpoints/model-last.bin (episode=%llu)\n", episode);
+            printf("Saved checkpoint: checkpoints/model-last.bin (episode=%d)\n", episode);
         } else {
             printf("Warning: failed to save checkpoint.\n");
         }

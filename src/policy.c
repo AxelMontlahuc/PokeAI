@@ -436,13 +436,13 @@ double* discountedPNL(state* etats, double gamma, int steps) {
     return G;
 }
 
-double* softmaxLayer(double* logits, int n) {
+double* softmaxLayer(double* logits, int n, double temperature) {
     double* probs = malloc(n * sizeof(double));
     assert(probs != NULL);
 
     double sum = 0.0;
     for (int i=0; i<n; i++) {
-        probs[i] = exp(logits[i]);
+        probs[i] = exp(logits[i] / temperature);
         sum += probs[i];
     }
     for (int i=0; i<n; i++) {
