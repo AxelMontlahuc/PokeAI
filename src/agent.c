@@ -4,6 +4,7 @@
 #include <math.h>
 #include <assert.h>
 #include <time.h>
+#include <stdint.h>
 #ifdef _WIN32
 #include <direct.h>
 #else
@@ -66,7 +67,7 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
             traj->actions[i] = chooseAction(distribution);
         }
         traj->actions[i] = chooseAction(traj->probs[i]);
-        
+
         mgba_press_button(&conn, traj->actions[i], 50);
 
         state s_next = fetchState(conn);
@@ -89,7 +90,11 @@ int main() {
 
     int inputSize = 4*(32*32) + 6*8 + 4 + 3 + 2;
     int hiddenSize = ACTION_COUNT;
-    LSTM* network = loadLSTM("checkpoints/model-last.bin");
+
+    uint64_t loaded_episodes = 0ULL;
+    uint64_t loaded_seed = 0ULL;
+
+    LSTM* network = loadLSTM("checkpoints/model-last.bin", &loaded_episodes, &loaded_seed);
     if (network) {
         printf("Loaded model from checkpoints/model-last.bin (input=%d, hidden=%d)\n", network->inputSize, network->hiddenSize);
     } else {
@@ -99,9 +104,19 @@ int main() {
 
     int trajectories = 30;
     int steps = 64;
+
     int episode = 0;
+
     double temperature = 1.0;
     double epsilon = 0.2;
+
+    if (network && loaded_episodes > 0ULL) {
+        episode = (int)loaded_episodes;
+        if (loaded_seed != 0ULL) {
+            seed = (unsigned int)loaded_seed;
+            srand(seed);
+        }
+    }
 
     while (true) {
         mgba_reset(&conn);
