@@ -62,6 +62,29 @@ typeshit struct LSTM {
     double* Bc;
     double* Bo;
     double* Bout;
+
+    int adam_t;
+    double** Wf_m; 
+    double** Wf_v;
+    double** Wi_m; 
+    double** Wi_v;
+    double** Wc_m; 
+    double** Wc_v;
+    double** Wo_m; 
+    double** Wo_v;
+    double** Wout_m; 
+    double** Wout_v;
+    
+    double* Bf_m; 
+    double* Bf_v;
+    double* Bi_m; 
+    double* Bi_v;
+    double* Bc_m; 
+    double* Bc_v;
+    double* Bo_m; 
+    double* Bo_v;
+    double* Bout_m; 
+    double* Bout_v;
 } LSTM;
 
 typeshit struct trajectory {
