@@ -3,6 +3,19 @@
 
 static const double ENTROPY_COEFF = 0.01;
 
+void entropyBonus(const double* probs, int O, double coeff, double* dlogits) {
+    double mean_logp = 0.0;
+    for (int k = 0; k < O; k++) {
+        double pk = probs[k];
+        mean_logp += pk * log(pk + 1e-12);
+    }
+    for (int k = 0; k < O; k++) {
+        double pk = probs[k];
+        double ent_grad = pk * (mean_logp - log(pk + 1e-12));
+        dlogits[k] += coeff * ent_grad;
+    }
+}
+
 double* forgetGate(LSTM* network, double* state) {
     double* result = malloc(network->hiddenSize * sizeof(double));
     assert(result != NULL);
@@ -277,18 +290,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
                 dlogits[k] = gadv * G[t];
             }
 
-            if (ENTROPY_COEFF > 0.0) {
-                double mean_logp = 0.0;
-                for (int k = 0; k < O; k++) { 
-                    double pk = tr->probs[t][k]; 
-                    mean_logp += pk * log(pk + 1e-12); 
-                }
-                for (int k = 0; k < O; k++) { 
-                    double pk = tr->probs[t][k]; 
-                    double ent_grad = pk * (mean_logp - log(pk + 1e-12)); 
-                    dlogits[k] += ENTROPY_COEFF * ent_grad; 
-                }
-            }
+            entropyBonus(tr->probs[t], O, ENTROPY_COEFF, dlogits);
 
             double inv_temp = 1.0 / temperature;
             double scale_eps = fmax(0.0, 1.0 - epsilon);
