@@ -153,7 +153,7 @@ for (int j = 0; j < H; j++) {
 }
 ```
 
-5. Finalement on dérive à travers chaque porte du LSTM. \
+5. Finalement on dérive à travers chaque porte du LSTM (leur rôle/fonctionnement est détaillé plus tard dans la partie LSTM). \
 Les tableaux `f`, `i`, `g` et `o` sont les sorties des portes. `z` est l'entrée concaténée avec l'état "caché" (hidden state) précédent. `h` est l'état caché (qui est en fait la mémoire "court-terme"), `c` le "cell state" (soit la mémoire "long-terme") et `cprev` le cell state précédent. \
 Les blocs de code effectuant la dérivée sont :
 ```c
@@ -200,6 +200,142 @@ for (int a = 0; a < Z; a++) {
 ```
 
 ## LSTM
+La politique utilisée est un LSTM (Long Short-Term Memory) qui est le réseau de neurones récurrent (RNN) le plus couramment utilisé. Son intérêt est son système de "mémoire" qui permet de mieux gérer les dépendances à long terme. \
+Il y a quelques années c'était le standard pour les modèles de textes comme la traduction mais aussi les LLMs avant l'arrivée des Transformers, ce qui illustre bien son efficacité. 
+
+On donne trois schémas pour illustrer le fonctionnement d'un LSTM, le premier pour mettre en évidence le rapport avec le thème "cycles et boucles" du TIPE et les deux autres pour détailler le fonctionnement du LSTM. 
+
+<img src="https://colah.github.io/posts/2015-08-Understanding-LSTMs/img/RNN-unrolled.png" alt="Figure 1" width="500" style="position: relative; left: 50%; transform: translateX(-50%);">
+<img src="https://colah.github.io/posts/2015-08-Understanding-LSTMs/img/LSTM3-chain.png" alt="Figure 2" width="500" style="position: relative; left: 50%; transform: translateX(-50%);">
+<img src="https://miro.medium.com/v2/resize:fit:1400/1*qToyitOZkf7Nhvr1LwxWgQ.png" alt="Figure 3" width="500" style="position: relative; left: 50%; transform: translateX(-50%);">
+
+Comme la figure 3 l'illustre, un LSTM est constitué de quatre "portes" (gates) que l'on nommera : la porte F (forget gate), la porte I (input gate), la porte G (candidate gate) et la porte O (output gate).
+
+Notons de plus qu'il y a deux états intrinsèques au LSTM que l'on nommera état caché (pour hidden state) noté $h$ et état cellule (pour cell state) noté $c$. Ils représentent en fait respectivement la mémoire "court-terme" et la mémoire "long-terme" du LSTM.
+
+Chaque porte a donc ses propres paramètres (poids et biais), d'où notre implémentation dans `struct.h` : 
+```c
+typeshit struct LSTM {
+    int inputSize;
+    int hiddenSize;
+    int outputSize;
+
+    double* hiddenState;
+    double* cellState;
+
+    double** Wf;
+    double** Wi;
+    double** Wc;
+    double** Wo;
+    double** Wout;
+
+    double* Bf;
+    double* Bi;
+    double* Bc;
+    double* Bo;
+    double* Bout;
+} LSTM;
+```
+Remarquons qu'on a les paramètres de la couche de sortie `Wout` et `Bout` en plus : nous avons choisit de rajouter une couche dense après le LSTM pour faire la sortie de la politique, ce qui permet notamment d'avoir un tableau avec une taille en sortie égale au nombre d'actions possibles (on peut donc directement appliquer un softmax dessus pour obtenir une distribution de probabilité sur les actions).
+
+> **NB :** La structure présente dans `struct.h` possède d'autre champs pour l'optimiseur Adam que nous détaillerons après, ainsi que pour stocker des informations utiles lors de la backpropagation (comme les probabilités). 
+
+Détaillons à présent le fonctionnement de chaque porte du LSTM : 
+### Porte F (Forget Gate)
+La porte F permet de décider quelles informations de l'état cellule (mémoire à long terme) doivent être oubliées de manière à faire de la place pour de nouvelles informations. \
+Voici son équation : 
+$$f_t = \sigma(W_f \cdot [h_{t-1}, x_t] + B_f)$$
+où $\sigma$ est la fonction sigmoïde : 
+$$\sigma(x) = \frac{1}{1 + e^{-x}}$$
+et où $[h_{t-1}, x_t]$ représente la concaténation de l'état caché précédent $h_{t-1}$ et de l'entrée actuelle $x_t$.
+
+Son implémentation dans `policy.c` est : 
+```c
+double* forgetGate(LSTM* network, double* state) {
+    double* result = malloc(network->hiddenSize * sizeof(double));
+    assert(result != NULL);
+
+    for (int i = 0; i < network->hiddenSize; i++) {
+        result[i] = network->Bf[i];
+        for (int j = 0; j < (network->inputSize + network->hiddenSize); j++) {
+            result[i] += state[j] * network->Wf[j][i];
+        }
+        result[i] = sigmoid(result[i]);
+    }
+
+    return result;
+}
+```
+
+### Porte I (Input Gate)
+La porte I permet de décider quelles nouvelles informations doivent être ajoutées à l'état cellule (mémoire à long terme) en travaillant avec la porte G (détaillée juste en dessous). \
+Voici son équation : 
+$$i_t = \sigma(W_i \cdot [h_{t-1}, x_t] + B_i)$$
+Son implémentation dans `policy.c` est :
+```c
+double* inputGate(LSTM* network, double* state) {
+    double* result = malloc(network->hiddenSize * sizeof(double));
+    assert(result != NULL);
+
+    for (int i = 0; i < network->hiddenSize; i++) {
+        result[i] = network->Bi[i];
+        for (int j = 0; j < (network->inputSize + network->hiddenSize); j++) {
+            result[i] += state[j] * network->Wi[j][i];
+        }
+        result[i] = sigmoid(result[i]);
+    }
+
+    return result;
+}
+```
+
+### Porte G (Candidate Gate)
+La porte G crée un vecteur de candidats qui pourraient être ajoutés à l'état cellule (mémoire à long terme) qui seront en fait sélectionnés par la porte I. \
+Voici son équation :
+$$g_t = \tanh(W_c \cdot [h_{t-1}, x_t] + B_c)$$
+Notons donc l'équation de l'état cellule au passage :
+$$c_t = f_t \cdot c_{t-1} + i_t * g_t$$
+Son implémentation dans `policy.c` est :
+```c
+double* candidateGate(LSTM* network, double* state) {
+    double* result = malloc(network->hiddenSize * sizeof(double));
+    assert(result != NULL);
+
+    for (int i = 0; i < network->hiddenSize; i++) {
+        result[i] = network->Bc[i];
+        for (int j = 0; j < (network->inputSize + network->hiddenSize); j++) {
+            result[i] += state[j] * network->Wc[j][i];
+        }
+        result[i] = tanh(result[i]);
+    }
+
+    return result;
+}
+```
+
+### Porte O (Output Gate)
+La porte O filtre l'état cellule (mémoire à long terme) pour décider quelles parties doivent être envoyées à l'état caché (mémoire à court-terme) et donc à la sortie du LSTM. \
+Voici son équation :
+$$o_t = \sigma(W_o \cdot [h_{t-1}, x_t] + B_o)$$
+On peut donc noter l'équation de l'état caché :
+$$h_t = o_t \cdot \tanh(c_t)$$
+Son implémentation dans `policy.c` est :
+```c
+double* outputGate(LSTM* network, double* state) {
+    double* result = malloc(network->hiddenSize * sizeof(double));
+    assert(result != NULL);
+
+    for (int i = 0; i < network->hiddenSize; i++) {
+        result[i] = network->Bo[i];
+        for (int j = 0; j < (network->inputSize + network->hiddenSize); j++) {
+            result[i] += state[j] * network->Wo[j][i];
+        }
+        result[i] = sigmoid(result[i]);
+    }
+
+    return result;
+}
+```
 
 ## Softmax Temperature
 
