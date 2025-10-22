@@ -179,7 +179,7 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
         for (int t = 0; t < T; t++) allG[cur++] = Gs[b][t];
     }
 
-    normReturns(allG, totalSteps);
+    normPNL(allG, totalSteps);
 
     cur = 0;
     for (int b = 0; b < batchCount; b++) {
@@ -363,19 +363,31 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
             assert(dz != NULL);
             for (int a = 0; a < Z; a++) { 
                 double sum=0.0; 
-                for (int j = 0; j < H; j++) sum += network->Wf[a][j] * d_f_pre[j]; dz[a] += sum; 
+                for (int j = 0; j < H; j++) {
+                    sum += network->Wf[a][j] * d_f_pre[j]; 
+                    dz[a] += sum; 
+                }
             }
             for (int a = 0; a < Z; a++) { 
                 double sum=0.0; 
-                for (int j = 0; j < H; j++) sum += network->Wi[a][j] * d_i_pre[j]; dz[a] += sum; 
+                for (int j = 0; j < H; j++) {
+                    sum += network->Wi[a][j] * d_i_pre[j]; 
+                    dz[a] += sum; 
+                }
             }
             for (int a = 0; a < Z; a++) { 
                 double sum=0.0; 
-                for (int j = 0; j < H; j++) sum += network->Wc[a][j] * d_g_pre[j]; dz[a] += sum; 
+                for (int j = 0; j < H; j++) {
+                    sum += network->Wc[a][j] * d_g_pre[j]; 
+                    dz[a] += sum; 
+                }
             }
             for (int a = 0; a < Z; a++) { 
                 double sum=0.0; 
-                for (int j = 0; j < H; j++) sum += network->Wo[a][j] * d_o_pre[j]; dz[a] += sum; 
+                for (int j = 0; j < H; j++) {
+                    sum += network->Wo[a][j] * d_o_pre[j]; 
+                    dz[a] += sum; 
+                }
             }
 
             for (int j = 0; j < H; j++) dh_next[j] = dz[I + j];

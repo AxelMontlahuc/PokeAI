@@ -134,37 +134,110 @@ int main() {
         }
         mgba_press_button(&conn, MGBA_BUTTON_B, 50);
         mgba_press_button(&conn, MGBA_BUTTON_B, 50);
-        printf("Game Initialized\n\n");
+
+        printf("\n========================================\n");
+        printf("Episode %d\n", episode + 1);
+        printf("========================================\n");
 
         temperature = fmax(1.0, 3.0 * pow(0.97, (double)episode));
         epsilon = fmax(0.02, 0.2 * pow(0.99, (double)episode));
         
+        int ep_count = 0;
+        double ep_mean = 0.0;
+        double ep_M2 = 0.0;
+        double ep_min = 1e300;
+        double ep_max = -1e300;
+
         for (int t=0; t<trajectories; t += batch_size) {
             int m = (t + batch_size <= trajectories) ? batch_size : (trajectories - t);
             trajectory** batch = malloc(m * sizeof(trajectory*));
             assert(batch != NULL);
 
+            double* batch_returns = malloc(m * sizeof(double));
+            assert(batch_returns != NULL);
+            int action_counts[ACTION_COUNT] = {0};
+            double entropy_sum = 0.0;
+            int entropy_count = 0;
+
             for (int b=0; b<m; b++) {
-                int idx = t + b;
                 batch[b] = runTrajectory(conn, network, steps, temperature, epsilon);
+
                 double ret = 0.0;
                 for (int i=0; i<steps; i++) ret += batch[b]->rewards[i];
-                printf("Trajectory %d: return=%lf\n", idx+1, ret);
+                batch_returns[b] = ret;
+
+                for (int i=0; i<steps; i++) {
+                    MGBAButton a = batch[b]->actions[i];
+                    if (a == MGBA_BUTTON_UP) action_counts[0]++;
+                    else if (a == MGBA_BUTTON_DOWN) action_counts[1]++;
+                    else if (a == MGBA_BUTTON_LEFT) action_counts[2]++;
+                    else if (a == MGBA_BUTTON_RIGHT) action_counts[3]++;
+                    else if (a == MGBA_BUTTON_A) action_counts[4]++;
+                    else if (a == MGBA_BUTTON_B) action_counts[5]++;
+
+                    double H = 0.0;
+                    for (int k=0; k<ACTION_COUNT; k++) {
+                        double p = batch[b]->probs[i][k];
+                        if (p > 0.0) H += -p * log(p + 1e-12);
+                    }
+                    entropy_sum += H;
+                    entropy_count++;
+                }
+
+                ep_count++;
+                double delta = ret - ep_mean;
+                ep_mean += delta / (double)ep_count;
+                double delta2 = ret - ep_mean;
+                ep_M2 += delta * delta2;
+                if (ret < ep_min) ep_min = ret;
+                if (ret > ep_max) ep_max = ret;
+            }
+
+            double bsum = 0.0;
+            for (int b=0; b<m; b++) bsum += batch_returns[b];
+            double bmean = bsum / (double)m;
+            double bvar = 0.0;
+            for (int b=0; b<m; b++) { double d = batch_returns[b] - bmean; bvar += d * d; }
+            bvar /= (double)m;
+            double bstd = sqrt(bvar);
+            double bmin = 1e300, bmax = -1e300;
+            for (int b=0; b<m; b++) { if (batch_returns[b] < bmin) bmin = batch_returns[b]; if (batch_returns[b] > bmax) bmax = batch_returns[b]; }
+            double avg_entropy = (entropy_count > 0) ? (entropy_sum / (double)entropy_count) : 0.0;
+
+            int total_actions = 0;
+            for (int k=0; k<ACTION_COUNT; k++) total_actions += action_counts[k];
+
+            printf("\n-- Batch %d/%d --\n", (t / batch_size) + 1, (trajectories + batch_size - 1) / batch_size);
+            printf("Returns: mean=% .4f  std=% .4f  min=% .4f  max=% .4f\n", bmean, bstd, bmin, bmax);
+            printf("Entropy: avg=% .4f   temp=%.3f  eps=%.3f  batch=%d  steps=%d\n", avg_entropy, temperature, epsilon, m, steps);
+            if (total_actions > 0) {
+                printf("Actions %%: U:%5.1f D:%5.1f L:%5.1f R:%5.1f A:%5.1f B:%5.1f\n",
+                    100.0*action_counts[0]/(double)total_actions,
+                    100.0*action_counts[1]/(double)total_actions,
+                    100.0*action_counts[2]/(double)total_actions,
+                    100.0*action_counts[3]/(double)total_actions,
+                    100.0*action_counts[4]/(double)total_actions,
+                    100.0*action_counts[5]/(double)total_actions);
             }
 
             backpropagation(network, NULL, 0.01, steps, batch, m, temperature, epsilon);
 
             for (int b=0; b<m; b++) freeTrajectory(batch[b]);
             free(batch);
+            free(batch_returns);
 
             if (stop()) {
-                printf("Objective met.\n");
+                printf("[Goal] Objective met.\n");
                 break;
             }
         }
 
         episode++;
-        printf("\nEpisode %d completed.\n", episode);
+        double ep_std = (ep_count > 1) ? sqrt(ep_M2 / (double)ep_count) : 0.0;
+        printf("\n========================================\n");
+        printf("Episode %d Summary\n", episode);
+        printf("Returns: mean=% .4f  std=% .4f  min=% .4f  max=% .4f\n", ep_mean, ep_std, ep_min, ep_max);
+        printf("========================================\n\n");
 
         #ifdef _WIN32
         _mkdir("checkpoints");
@@ -172,9 +245,9 @@ int main() {
         mkdir("checkpoints", 0755);
         #endif
         if (saveLSTMCheckpoint("checkpoints/model-last.bin", network, (uint64_t)episode, (uint64_t)seed) == 0) {
-            printf("Saved checkpoint: checkpoints/model-last.bin (episode=%d)\n", episode);
+            printf("[Checkpoint] Saved: checkpoints/model-last.bin (episode=%d)\n", episode);
         } else {
-            printf("Warning: failed to save checkpoint.\n");
+            printf("[Checkpoint] Warning: failed to save.\n");
         }
 
         reset_flags();
