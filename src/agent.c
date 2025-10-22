@@ -83,8 +83,9 @@ int main() {
     unsigned int seed = (unsigned int)time(NULL);
     srand(seed);
 
-    int inputSize = 4*(32*32) + 6*8 + 4 + 3 + 2;
-    int hiddenSize = 256;
+    //int inputSize = 4*(32*32) + 6*8 + 4 + 3 + 2;
+    int inputSize = 6*8 + 4 + 3 + 2;
+    int hiddenSize = 128;
 
     uint64_t loaded_episodes = 0ULL;
     uint64_t loaded_seed = 0ULL;

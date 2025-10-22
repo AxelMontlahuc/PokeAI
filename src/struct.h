@@ -26,14 +26,14 @@ typeshit struct pokemon {
 } pokemon;
 
 typeshit struct state {
-    MGBAMap* map0;
+    /*MGBAMap* map0;
     MGBAMap* map1;
     MGBAMap* map2;
     MGBAMap* map3;
     int** bg0;
     int** bg1;
     int** bg2;
-    int** bg3;
+    int** bg3;*/
     pokemon* team;
     int* enemy;
     int* PP;
@@ -74,7 +74,7 @@ typeshit struct LSTM {
     double** Wo_v;
     double** Wout_m; 
     double** Wout_v;
-    
+
     double* Bf_m; 
     double* Bf_v;
     double* Bi_m; 

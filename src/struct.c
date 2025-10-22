@@ -1,10 +1,10 @@
 #include "struct.h"
 
 void freeState(state s) {
-    mgba_free_map(s.map0);
+    /*mgba_free_map(s.map0);
     mgba_free_map(s.map1);
     mgba_free_map(s.map2);
-    mgba_free_map(s.map3);
+    mgba_free_map(s.map3);*/
 
     free(s.team);
     free(s.enemy);
