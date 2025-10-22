@@ -338,6 +338,23 @@ double* outputGate(LSTM* network, double* state) {
 ```
 
 ## Softmax Temperature
+Un dilemme classique en RL est celui de l'exploration vs l'exploitation. En début d'entraînement il faut favoriser l'exploration, c'est pourquoi on utilise un système de température dans le softmax pour "lisser" les probabilités et favoriser l'exploration. \
+La formule du softmax avec température est la suivante :
+$$\text{softmax}(z_i) = \frac{e^{z_i / T}}{\sum_j e^{z_j / T}}$$
+où $T$ est la température. \
+Lorsque $T$ est grand, les probabilités sont plus uniformes (favorisant l'exploration), tandis que lorsque $T$ est petit, les probabilités sont plus concentrées sur les actions avec les plus hauts logits (favorisant l'exploitation).
+
+Cela se traduit dans le code par l'argument `temperature` dans la fonction `forward` où est implémenté le softmax dans `policy.c` :
+```c
+  double sum = 0.0;
+  for (int k=0; k<network->outputSize; k++) {
+      network->probs[k] = exp(network->logits[k] / temperature);
+      sum += network->probs[k];
+  }
+  for (int k=0; k<network->outputSize; k++) {
+      network->probs[k] /= sum;
+  }
+```
 
 ## Epsilon-greedy
 
