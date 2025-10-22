@@ -380,6 +380,42 @@ epsilon = fmax(0.02, 0.2 * pow(0.99, (double)episode));
 ```
 
 ## Bonus d'entropie
+Une dernière méthode pour favoriser l'exploration est d'ajouter un bonus d'entropie. L'idée est d'encourager l'agent à maintenir une certaine diversité dans ses actions en récompensant les politiques plus "incertaines" (c'est-à-dire avec une entropie plus élevée). 
+
+L'entropie $H$ d'une distribution de probabilité $P$ se calcule de la façon suivante :
+$$H(P) = -\sum_{i} P(i) \log(P(i))$$
+
+Ici on ajoute directement un bonus d'entropie au gradient de la politique qui devient donc : 
+$$\nabla_\theta\mathbb E_{\pi_\theta} G(\tau) = \frac 1 L \sum_\tau\sum_{t=0}^{T-1} \left( \nabla_\theta \log \pi_\theta(a_t\mid s_t) G(\tau) + \beta \nabla_\theta H(\pi_\theta(\cdot\mid s_t)) \right)$$
+Détaillons la dérivée de l'entropie :
+$$
+\begin{align*}
+  \nabla_\theta H(\pi_\theta(\cdot\mid s_t)) &= \pi_\theta(\cdot\mid s_t) (\mathbb E_{\pi_\theta} (\log \pi_\theta(\cdot\mid s_t)) - \log \pi_\theta(i\mid s_t)) \\
+  &= \pi_\theta(\cdot\mid s_t) \left( \left( \sum_k \pi_\theta(k\mid s_t) \log \pi_\theta(k\mid s_t) \right) - \log \pi_\theta(i\mid s_t) \right)
+\end{align*}
+$$
+
+L'implémentation dans `policy.c` est donc la suivante : 
+```c
+static const double ENTROPY_COEFF = 0.01; // Coefficient beta
+```
+```c
+void entropyBonus(const double* probs, int O, double coeff, double* dlogits) {
+    double mean_logp = 0.0;
+    for (int k = 0; k < O; k++) {
+        double pk = probs[k];
+        mean_logp += pk * log(pk + 1e-12);
+    }
+    for (int k = 0; k < O; k++) {
+        double pk = probs[k];
+        double ent_grad = pk * (mean_logp - log(pk + 1e-12));
+        dlogits[k] += coeff * ent_grad;
+    }
+}
+```
+```c
+entropyBonus(tr->probs[t], O, ENTROPY_COEFF, dlogits);
+```
 
 ## Normalisation
 
