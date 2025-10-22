@@ -167,6 +167,25 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
     int Z = I + H;
     int O = network->outputSize;
 
+    int T = steps;
+    int totalSteps = batchCount * steps;
+    double** Gs = malloc(batchCount * sizeof(double*));
+    double* allG = malloc(totalSteps * sizeof(double));
+    assert(Gs != NULL && allG != NULL);
+
+    int cur = 0;
+    for (int b = 0; b < batchCount; b++) {
+        Gs[b] = discountedPNL(trajectories[b]->rewards, 0.9, T, false);
+        for (int t = 0; t < T; t++) allG[cur++] = Gs[b][t];
+    }
+
+    normReturns(allG, totalSteps);
+
+    cur = 0;
+    for (int b = 0; b < batchCount; b++) {
+        for (int t = 0; t < T; t++) Gs[b][t] = allG[cur++];
+    }
+
     double** dWf = malloc(Z * sizeof(double*));
     double** dWi = malloc(Z * sizeof(double*));
     double** dWc = malloc(Z * sizeof(double*));
@@ -252,7 +271,7 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
             for (int j = 0; j < H; j++) cprev_vec[j] = c[t][j];
         }
 
-        double* G = discountedPNL(tr->rewards, 0.9, T, true);
+        double* G = Gs[b];
 
         double* dh_next = calloc(H, sizeof(double));
         double* dc_next = calloc(H, sizeof(double));
@@ -269,8 +288,15 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
 
             if (ENTROPY_COEFF > 0.0) {
                 double mean_logp = 0.0;
-                for (int k = 0; k < O; k++) { double pk = tr->probs[t][k]; mean_logp += pk * log(pk + 1e-12); }
-                for (int k = 0; k < O; k++) { double pk = tr->probs[t][k]; double ent_grad = pk * (mean_logp - log(pk + 1e-12)); dlogits[k] += ENTROPY_COEFF * ent_grad; }
+                for (int k = 0; k < O; k++) { 
+                    double pk = tr->probs[t][k]; 
+                    mean_logp += pk * log(pk + 1e-12); 
+                }
+                for (int k = 0; k < O; k++) { 
+                    double pk = tr->probs[t][k]; 
+                    double ent_grad = pk * (mean_logp - log(pk + 1e-12)); 
+                    dlogits[k] += ENTROPY_COEFF * ent_grad; 
+                }
             }
 
             double inv_temp = 1.0 / temperature;
@@ -280,9 +306,13 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
             double* dh = malloc(H * sizeof(double));
             assert(dh != NULL);
             for (int j = 0; j < H; j++) dh[j] = dh_next[j];
-            for (int j = 0; j < H; j++) { for (int k = 0; k < O; k++) dWout[j][k] += h[t][j] * dlogits[k]; }
+            for (int j = 0; j < H; j++) { 
+                for (int k = 0; k < O; k++) dWout[j][k] += h[t][j] * dlogits[k]; 
+            }
             for (int k = 0; k < O; k++) dBout[k] += dlogits[k];
-            for (int j = 0; j < H; j++) { double s = 0.0; for (int k = 0; k < O; k++) s += network->Wout[j][k] * dlogits[k]; dh[j] += s; }
+            for (int j = 0; j < H; j++) { 
+                double s = 0.0; for (int k = 0; k < O; k++) s += network->Wout[j][k] * dlogits[k]; dh[j] += s; 
+            }
 
             double* do_vec = malloc(H * sizeof(double));
             assert(do_vec != NULL);
@@ -316,17 +346,37 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
             for (int j = 0; j < H; j++) d_g_pre[j] = dg[j] * (1.0 - g[t][j] * g[t][j]);
 
             for (int j = 0; j < H; j++) { dBf[j] += d_f_pre[j]; dBi[j] += d_i_pre[j]; dBc[j] += d_g_pre[j]; dBo[j] += d_o_pre[j]; }
-            for (int a = 0; a < Z; a++) { for (int j = 0; j < H; j++) dWf[a][j] += z[t][a] * d_f_pre[j]; }
-            for (int a = 0; a < Z; a++) { for (int j = 0; j < H; j++) dWi[a][j] += z[t][a] * d_i_pre[j]; }
-            for (int a = 0; a < Z; a++) { for (int j = 0; j < H; j++) dWc[a][j] += z[t][a] * d_g_pre[j]; }
-            for (int a = 0; a < Z; a++) { for (int j = 0; j < H; j++) dWo[a][j] += z[t][a] * d_o_pre[j]; }
+            for (int a = 0; a < Z; a++) { 
+                for (int j = 0; j < H; j++) dWf[a][j] += z[t][a] * d_f_pre[j]; 
+            }
+            for (int a = 0; a < Z; a++) { 
+                for (int j = 0; j < H; j++) dWi[a][j] += z[t][a] * d_i_pre[j]; 
+            }
+            for (int a = 0; a < Z; a++) { 
+                for (int j = 0; j < H; j++) dWc[a][j] += z[t][a] * d_g_pre[j]; 
+            }
+            for (int a = 0; a < Z; a++) { 
+                for (int j = 0; j < H; j++) dWo[a][j] += z[t][a] * d_o_pre[j]; 
+            }
 
             double* dz = calloc(Z, sizeof(double));
             assert(dz != NULL);
-            for (int a = 0; a < Z; a++) { double sum=0.0; for (int j = 0; j < H; j++) sum += network->Wf[a][j] * d_f_pre[j]; dz[a] += sum; }
-            for (int a = 0; a < Z; a++) { double sum=0.0; for (int j = 0; j < H; j++) sum += network->Wi[a][j] * d_i_pre[j]; dz[a] += sum; }
-            for (int a = 0; a < Z; a++) { double sum=0.0; for (int j = 0; j < H; j++) sum += network->Wc[a][j] * d_g_pre[j]; dz[a] += sum; }
-            for (int a = 0; a < Z; a++) { double sum=0.0; for (int j = 0; j < H; j++) sum += network->Wo[a][j] * d_o_pre[j]; dz[a] += sum; }
+            for (int a = 0; a < Z; a++) { 
+                double sum=0.0; 
+                for (int j = 0; j < H; j++) sum += network->Wf[a][j] * d_f_pre[j]; dz[a] += sum; 
+            }
+            for (int a = 0; a < Z; a++) { 
+                double sum=0.0; 
+                for (int j = 0; j < H; j++) sum += network->Wi[a][j] * d_i_pre[j]; dz[a] += sum; 
+            }
+            for (int a = 0; a < Z; a++) { 
+                double sum=0.0; 
+                for (int j = 0; j < H; j++) sum += network->Wc[a][j] * d_g_pre[j]; dz[a] += sum; 
+            }
+            for (int a = 0; a < Z; a++) { 
+                double sum=0.0; 
+                for (int j = 0; j < H; j++) sum += network->Wo[a][j] * d_o_pre[j]; dz[a] += sum; 
+            }
 
             for (int j = 0; j < H; j++) dh_next[j] = dz[I + j];
             for (int j = 0; j < H; j++) dc_next[j] = dc[j] * f[t][j];
@@ -369,20 +419,40 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
         free(cprev_vec);
         free(dh_next);
         free(dc_next);
-        free(G);
     }
 
     double invM = 1.0 / (double)batchCount;
-    for (int a = 0; a < Z; a++) { for (int j = 0; j < H; j++) { dWf[a][j] *= invM; dWi[a][j] *= invM; dWc[a][j] *= invM; dWo[a][j] *= invM; } }
-    for (int j = 0; j < H; j++) { for (int k = 0; k < O; k++) dWout[j][k] *= invM; }
-    for (int j = 0; j < H; j++) { dBf[j] *= invM; dBi[j] *= invM; dBc[j] *= invM; dBo[j] *= invM; }
+    for (int a = 0; a < Z; a++) { 
+        for (int j = 0; j < H; j++) { 
+            dWf[a][j] *= invM; 
+            dWi[a][j] *= invM; 
+            dWc[a][j] *= invM; 
+            dWo[a][j] *= invM; 
+        } 
+    }
+    for (int j = 0; j < H; j++) { 
+        for (int k = 0; k < O; k++) dWout[j][k] *= invM; 
+    }
+    for (int j = 0; j < H; j++) { 
+        dBf[j] *= invM; dBi[j] *= invM; dBc[j] *= invM; dBo[j] *= invM; 
+    }
     for (int k = 0; k < O; k++) dBout[k] *= invM;
 
     double clip = 1.0; double norm2 = 0.0;
-    for (int a = 0; a < Z; a++) { for (int j = 0; j < H; j++) { norm2 += dWf[a][j]*dWf[a][j]; norm2 += dWi[a][j]*dWi[a][j]; norm2 += dWc[a][j]*dWc[a][j]; norm2 += dWo[a][j]*dWo[a][j]; } }
-    for (int j = 0; j < H; j++) { for (int k = 0; k < O; k++) norm2 += dWout[j][k]*dWout[j][k]; }
-    for (int j = 0; j < H; j++) { norm2 += dBf[j]*dBf[j] + dBi[j]*dBi[j] + dBc[j]*dBc[j] + dBo[j]*dBo[j]; }
+    for (int a = 0; a < Z; a++) { 
+        for (int j = 0; j < H; j++) { 
+            norm2 += dWf[a][j]*dWf[a][j]; 
+            norm2 += dWi[a][j]*dWi[a][j]; 
+            norm2 += dWc[a][j]*dWc[a][j]; 
+            norm2 += dWo[a][j]*dWo[a][j]; 
+        } 
+    }
+    for (int j = 0; j < H; j++) { 
+        for (int k = 0; k < O; k++) norm2 += dWout[j][k]*dWout[j][k]; 
+    }
+    for (int j = 0; j < H; j++) norm2 += dBf[j]*dBf[j] + dBi[j]*dBi[j] + dBc[j]*dBc[j] + dBo[j]*dBo[j];
     for (int k = 0; k < O; k++) norm2 += dBout[k]*dBout[k];
+
     double norm = sqrt(norm2); double scale = (norm > clip) ? (clip / (norm + 1e-12)) : 1.0;
 
     for (int a = 0; a < Z; a++) {
@@ -391,14 +461,39 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
         for (int j = 0; j < H; j++) network->Wc[a][j] += learningRate * (dWc[a][j] * scale);
         for (int j = 0; j < H; j++) network->Wo[a][j] += learningRate * (dWo[a][j] * scale);
     }
-    for (int j = 0; j < H; j++) { for (int k = 0; k < O; k++) network->Wout[j][k] += learningRate * (dWout[j][k] * scale); }
-    for (int j = 0; j < H; j++) { network->Bf[j] += learningRate * (dBf[j] * scale); network->Bi[j] += learningRate * (dBi[j] * scale); network->Bc[j] += learningRate * (dBc[j] * scale); network->Bo[j] += learningRate * (dBo[j] * scale); }
+    for (int j = 0; j < H; j++) { 
+        for (int k = 0; k < O; k++) network->Wout[j][k] += learningRate * (dWout[j][k] * scale); 
+    }
+
+    for (int j = 0; j < H; j++) { 
+        network->Bf[j] += learningRate * (dBf[j] * scale); 
+        network->Bi[j] += learningRate * (dBi[j] * scale); 
+        network->Bc[j] += learningRate * (dBc[j] * scale); 
+        network->Bo[j] += learningRate * (dBo[j] * scale); 
+    }
     for (int k = 0; k < O; k++) network->Bout[k] += learningRate * (dBout[k] * scale);
 
-    for (int a = 0; a < Z; a++) { free(dWf[a]); free(dWi[a]); free(dWc[a]); free(dWo[a]); }
+    for (int a = 0; a < Z; a++) { 
+        free(dWf[a]); 
+        free(dWi[a]); 
+        free(dWc[a]); 
+        free(dWo[a]); 
+    }
     for (int j = 0; j < H; j++) free(dWout[j]);
-    free(dWf); free(dWi); free(dWc); free(dWo); free(dWout);
-    free(dBf); free(dBi); free(dBc); free(dBo); free(dBout);
+    free(dWf); 
+    free(dWi); 
+    free(dWc); 
+    free(dWo); 
+    free(dWout);
+    free(dBf);
+    free(dBi);
+    free(dBc);
+    free(dBo);
+    free(dBout);
+
+    for (int b = 0; b < batchCount; b++) free(Gs[b]);
+    free(Gs);
+    free(allG);
 
     return network->hiddenState;
 }

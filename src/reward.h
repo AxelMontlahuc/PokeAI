@@ -12,6 +12,7 @@
 #include "../mGBA-interface/include/mgba_intel.h"
 
 double pnl(state s, state s_next);
+void normPNL(double* G, int n);
 bool stop();
 void reset_flags();
 

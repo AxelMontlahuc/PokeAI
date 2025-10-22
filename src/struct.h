@@ -12,7 +12,7 @@
 
 #define typeshit typedef
 
-#define ACTION_COUNT 7
+#define ACTION_COUNT 6
 
 typeshit struct pokemon {
     int maxHP;

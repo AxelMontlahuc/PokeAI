@@ -51,6 +51,22 @@ double pnl(state s, state s_next) {
     return pnl;
 }
 
+void normPNL(double* G, int n) {
+    double mean = 0.0;
+    for (int i = 0; i < n; i++) mean += G[i];
+    mean /= (double)n;
+
+    double var = 0.0;
+    for (int i = 0; i < n; i++) {
+        double d = G[i] - mean;
+        var += d * d;
+    }
+    var /= (double)n;
+    double std = sqrt(var) + 1e-8;
+
+    for (int i = 0; i < n; i++) G[i] = (G[i] - mean) / std;
+}
+
 bool stop() {
     return CLOCK_FLAG;
 }
