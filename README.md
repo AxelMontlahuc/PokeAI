@@ -43,8 +43,8 @@ Voici le plan des caractéristiques que nous allons détailler :
 2. LSTM
 3. Softmax Temperature
 4. Epsilon-greedy
-5. Entropy Bonus
-6. Normalization
+5. Bonus d'entropie
+6. Normalisation
 7. Adam
 
 ## Vanilla Policy Gradient
@@ -355,11 +355,32 @@ Cela se traduit dans le code par l'argument `temperature` dans la fonction `forw
       network->probs[k] /= sum;
   }
 ```
+On fait donc baisser la température au fur et à mesure de l'entraînement pour favoriser l'exploitation une fois que l'agent a suffisamment exploré l'environnement. 
+
+Voici la ligne dans `agent.c` responsable de la mise-à-jour de la température : 
+```c
+temperature = fmax(1.0, 3.0 * pow(0.97, (double)episode));
+```
 
 ## Epsilon-greedy
+L'epsilon-greedy est une autre technique pour gérer le dilemme exploration vs exploitation. Elle consiste à choisir l'action selon la politique avec une probabilité $1 - \varepsilon$ et à choisir une action aléatoire avec une probabilité $\varepsilon$. Ainsi, si la politique est trop confiante (si elle est bloquée à un maximum local par exemple), l'agent explorera quand même de temps en temps. 
 
-## Entropy Bonus
+Comme pour la température, on fait baisser $\varepsilon$ au fur et à mesure de l'entraînement. 
 
-## Normalization
+Voici les blocs de code dans `agent.c` qui gèrent l'epsilon-greedy :
+```c
+if (((double)rand() / RAND_MAX) < epsilon) {
+    traj->actions[i] = ACTIONS[rand() % ACTION_COUNT];
+} else {
+    traj->actions[i] = chooseAction(distribution);
+}
+```
+```c
+epsilon = fmax(0.02, 0.2 * pow(0.99, (double)episode));
+```
+
+## Bonus d'entropie
+
+## Normalisation
 
 ## Adam
