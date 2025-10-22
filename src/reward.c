@@ -51,6 +51,18 @@ double pnl(state s, state s_next) {
     return pnl;
 }
 
+double* discountedPNL(double* rewards, double gamma, int steps) {
+    double* G = calloc(steps, sizeof(double));
+    assert(G != NULL);
+    
+    G[steps - 1] = rewards[steps - 1];
+    for (int t = steps - 2; t >= 0; t--) {
+        G[t] = rewards[t] + gamma * G[t+1];
+    }
+
+    return G;
+}
+
 void normPNL(double* G, int n) {
     double mean = 0.0;
     for (int i = 0; i < n; i++) mean += G[i];

@@ -106,32 +106,6 @@ double* forward(LSTM* network, double* data, double temperature) {
     return network->probs;
 }
 
-
-double* discountedPNL(double* rewards, double gamma, int steps, bool normalize) {
-    double* G = calloc(steps, sizeof(double));
-    assert(G != NULL);
-    
-    for (int t = steps - 2; t >= 0; t--) {
-        G[t] = rewards[t] + gamma * G[t+1];
-    }
-
-    if (normalize) {
-        double mean = 0.0;
-        for (int t = 0; t < steps; t++) mean += G[t];
-        mean /= (double)steps;
-        double var = 0.0;
-        for (int t = 0; t < steps; t++) {
-            double d = G[t] - mean;
-            var += d * d;
-        }
-        var /= (double)steps;
-        double std = sqrt(var) + 1e-8;
-        for (int t = 0; t < steps; t++) G[t] = (G[t] - mean) / std;
-    }
-
-    return G;
-}
-
 void dL_dWout(LSTM* network, double* dlogits, double* h_t, double** dWout, double* dBout, double* dh_accum) {
     int H = network->hiddenSize;
     int O = network->outputSize;
@@ -160,8 +134,7 @@ static int actionToIndex(MGBAButton action) {
 }
 
 
-double* backpropagation(LSTM* network, double* data, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, double epsilon) {
-    (void)data;
+double* backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, double epsilon) {
     int H = network->hiddenSize;
     int I = network->inputSize;
     int Z = I + H;
@@ -175,7 +148,7 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
 
     int cur = 0;
     for (int b = 0; b < batchCount; b++) {
-        Gs[b] = discountedPNL(trajectories[b]->rewards, 0.9, T, false);
+        Gs[b] = discountedPNL(trajectories[b]->rewards, 0.9, T);
         for (int t = 0; t < T; t++) allG[cur++] = Gs[b][t];
     }
 
@@ -192,6 +165,7 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
     double** dWo = malloc(Z * sizeof(double*));
     double** dWout = malloc(H * sizeof(double*));
     assert(dWf && dWi && dWc && dWo && dWout);
+
     for (int a = 0; a < Z; a++) {
         dWf[a] = calloc(H, sizeof(double));
         dWi[a] = calloc(H, sizeof(double));
@@ -199,7 +173,12 @@ double* backpropagation(LSTM* network, double* data, double learningRate, int st
         dWo[a] = calloc(H, sizeof(double));
         assert(dWf[a] && dWi[a] && dWc[a] && dWo[a]);
     }
-    for (int j = 0; j < H; j++) { dWout[j] = calloc(O, sizeof(double)); assert(dWout[j]); }
+
+    for (int j = 0; j < H; j++) { 
+        dWout[j] = calloc(O, sizeof(double)); 
+        assert(dWout[j]); 
+    }
+    
     double* dBf = calloc(H, sizeof(double));
     double* dBi = calloc(H, sizeof(double));
     double* dBc = calloc(H, sizeof(double));

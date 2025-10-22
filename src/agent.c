@@ -220,7 +220,7 @@ int main() {
                     100.0*action_counts[5]/(double)total_actions);
             }
 
-            backpropagation(network, NULL, 0.01, steps, batch, m, temperature, epsilon);
+            backpropagation(network, 0.01, steps, batch, m, temperature, epsilon);
 
             for (int b=0; b<m; b++) freeTrajectory(batch[b]);
             free(batch);
