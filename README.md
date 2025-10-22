@@ -1,3 +1,5 @@
+> **ATTENTION** : GitHub gère mal MathJax (qui permet d'écrire du LaTeX dans le markdown), donc il est recommandé de lire le README localement ou avec un outil supportant MathJax.
+
 # Projet
 Le but de ce TIPE est de créer un réseau de neurones capable de jouer à Pokémon Emeraude en C sans utiliser de librairies de Machine Learning, de manière à tout recoder de zéro pour mieux comprendre les maths derrière l'agent que nous allons construire. 
 
@@ -124,7 +126,7 @@ $$\frac{\partial \log (\text{softmax}(z_i))}{\partial \text{logits}(z_j)} =
 \end{cases}$$
 $\quad\quad\space$ Dans le code cela se traduit par la ligne : 
 ```c
-gadv = ((k == actionIndex) ? 1.0 : 0.0) - probs[k]` puis `dlogits[k] = gadv * G[t]
+gadv = ((k == actionIndex) ? 1.0 : 0.0) - probs[k]
 ```
 
 2. On multiplie par $G(\tau)$ (on aurait pu le faire plus tard et d'abord multiplier par $\frac{\partial \text{logits}}{\partial\theta}$) :
@@ -134,55 +136,67 @@ dlogits[k] = gadv * G[t]
 
 3. On dérive ensuite la couche de sortie (c'est simplement une couche dense, donc la dérivée est celle d'une fonction affine, on passe les détails) : 
 ```c
-dWout[j][k] += h_t[j] * dlogits[k]
+for (int j = 0; j < H; j++) { 
+  for (int k = 0; k < O; k++) dWout[j][k] += h[t][j] * dlogits[k]; 
+}
 ```
 ```c
-dBout[k] += dlogits[k]
+for (int k = 0; k < O; k++) dBout[k] += dlogits[k];
 ```
 
 4. On dérive les paramètres de la couche de sortie sur l'état "caché" (traduction littérale pour hidden state) :
 ```c
-dh[j] += \sum_k Wout[j][k] * dlogits[k]`
+for (int j = 0; j < H; j++) { 
+  double s = 0.0; 
+  for (int k = 0; k < O; k++) s += network->Wout[j][k] * dlogits[k]; 
+  dh[j] += s; 
+}
 ```
 
 5. Finalement on dérive à travers chaque porte du LSTM. \
 Les tableaux `f`, `i`, `g` et `o` sont les sorties des portes. `z` est l'entrée concaténée avec l'état "caché" (hidden state) précédent. `h` est l'état caché (qui est en fait la mémoire "court-terme"), `c` le "cell state" (soit la mémoire "long-terme") et `cprev` le cell state précédent. \
 Les blocs de code effectuant la dérivée sont :
 ```c
-do = dh * tanh(c_t);
-d_o_pre = do * o * (1 - o);
+for (int j = 0; j < H; j++) do_vec[j] = dh[j] * tanh(c[t][j]);
+for (int j = 0; j < H; j++) d_o_pre[j] = do_vec[j] * o[t][j] * (1.0 - o[t][j]);
 ```
 ```c
-dc = dh * o * (1 - tanh(c)^2) + dc_next
+for (int j = 0; j < H; j++) dc[j] = dh[j] * o[t][j] * (1.0 - tanh(c[t][j]) * tanh(c[t][j])) + dc_next[j];
 ```
 ```c
-df = dc * c_{t-1}`;
-d_f_pre = df * f * (1 - f);
+for (int j = 0; j < H; j++) df[j] = dc[j] * cprev[t][j];
+for (int j = 0; j < H; j++) d_f_pre[j] = df[j] * f[t][j] * (1.0 - f[t][j]);
 ```
 ```c
-di = dc * g;
-d_i_pre = di * i * (1 - i);
+for (int j = 0; j < H; j++) di_vec[j] = dc[j] * g[t][j];
+for (int j = 0; j < H; j++) d_i_pre[j] = di_vec[j] * i[t][j] * (1.0 - i[t][j]);
 ```
 ```c
-dg = dc * i;
-d_g_pre = dg * (1 - g^2);
+for (int j = 0; j < H; j++) dg[j] = dc[j] * i[t][j];
+for (int j = 0; j < H; j++) d_g_pre[j] = dg[j] * (1.0 - g[t][j] * g[t][j]);
 ```
 
 6. Finalement chaque paramètre $\theta$ est mis-à-jour selon la montée de gradient donnée par la formule : 
 $$\theta \leftarrow \theta - \eta \nabla_\theta \mathbb E_{\pi_\theta} G(\tau)$$
 $\quad\quad\space$ Pour les biais :
 ```c
-dBf += d_f_pre;
-dBi += d_i_pre;
-dBc += d_g_pre;
-dBo += d_o_pre;
+for (int j = 0; j < H; j++) { 
+  dBf[j] += d_f_pre[j]; 
+  dBi[j] += d_i_pre[j]; 
+  dBc[j] += d_g_pre[j]; 
+  dBo[j] += d_o_pre[j]; 
+}
 ```
 $\quad\quad\space$ Pour les poids :
 ```c
-dWf[a][j] += z[t][a] * d_f_pre[j];
-dWi[a][j] += z[t][a] * d_i_pre[j];
-dWc[a][j] += z[t][a] * d_g_pre[j];
-dWo[a][j] += z[t][a] * d_o_pre[j];
+for (int a = 0; a < Z; a++) { 
+  for (int j = 0; j < H; j++) {
+    dWf[a][j] += z[t][a] * d_f_pre[j];
+    dWi[a][j] += z[t][a] * d_i_pre[j];
+    dWc[a][j] += z[t][a] * d_g_pre[j];
+    dWo[a][j] += z[t][a] * d_o_pre[j];
+  } 
+}
 ```
 
 ## LSTM
