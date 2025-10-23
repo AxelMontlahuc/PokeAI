@@ -87,9 +87,9 @@ int main() {
     uint64_t loaded_episodes = 0ULL;
     uint64_t loaded_seed = 0ULL;
 
-    LSTM* network = loadLSTM("checkpoints/model-last.bin", &loaded_episodes, &loaded_seed);
+    LSTM* network = loadLSTM("checkpoints/model-last.sav", &loaded_episodes, &loaded_seed);
     if (network) {
-        printf("Loaded model from checkpoints/model-last.bin (input=%d, hidden=%d)\n", network->inputSize, network->hiddenSize);
+        printf("Loaded model from checkpoints/model-last.sav (input=%d, hidden=%d)\n", network->inputSize, network->hiddenSize);
     } else {
     network = initLSTM(inputSize, hiddenSize, ACTION_COUNT);
         printf("Initialized new model (input=%d, hidden=%d)\n", inputSize, hiddenSize);
@@ -241,8 +241,8 @@ int main() {
         #else
         mkdir("checkpoints", 0755);
         #endif
-        if (saveLSTMCheckpoint("checkpoints/model-last.bin", network, (uint64_t)episode, (uint64_t)seed) == 0) {
-            printf("[Checkpoint] Saved: checkpoints/model-last.bin (episode=%d)\n", episode);
+        if (saveLSTMCheckpoint("checkpoints/model-last.sav", network, (uint64_t)episode, (uint64_t)seed) == 0) {
+            printf("[Checkpoint] Saved: checkpoints/model-last.sav (episode=%d)\n", episode);
         } else {
             printf("[Checkpoint] Warning: failed to save.\n");
         }
