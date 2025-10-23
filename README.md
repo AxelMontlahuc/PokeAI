@@ -511,3 +511,180 @@ double g = dBout[k] * scale;
 ```
 
 ## Adam
+L'entraînement du réseau de neurone est très long, notamment parce qu'il dépend de la vitesse du jeu dans mGBA qu'on arrive seulement à accélerer en x10. Pour accélérer l'entraînement, soit la convergence du modèle vers la politique optimale on utilise l'optimisateur Adam (Adaptive Moment Estimation). 
+
+L'idée derrière Adam est d'ajuster dynamiquement le taux d'apprentisage pour chaque paramètre en fonction de ce qu'on appelle les moments : la moyenne (premier moment) et la variance (second moment) des gradients. \
+En particulier ces deux moments viennent en fait de deux autres optimisateurs : le Momentum (pour la moyenne) et le RMSProp (pour la variance) que nous allons un peu détailler avant de passer à Adam.
+
+On rappelle la formule de la montée de gradient standard :
+$$\theta \leftarrow \theta - \eta \nabla_\theta \mathbb E_{\pi_\theta} G(\tau)$$
+
+### Momentum
+Le Momentum accélère la convergence en ajoutant un terme en fonction de la moyenne des gradients passés à la montée de gradient. 
+
+Voici sa formule : 
+$$\theta \leftarrow \theta - \eta m_t$$
+Avec $m_t$ la moyenne mobile des gradients calculée comme suit : 
+$$m_t = \beta_1 m_{t-1} + (1 - \beta_1) \nabla_\theta \mathbb E_{\pi_\theta} G(\tau)$$
+où $\beta_1$ est un paramètre (typiquement $0.9$). 
+
+### RMSProp
+Le RMSProp adapte le taux d'apprentissage en fonction de la variance des gradients passés.
+
+Voici sa formule :
+$$\theta \leftarrow \theta - \eta \frac{\nabla_\theta \mathbb E_{\pi_\theta} G(\tau)}{\sqrt{v_t} + \varepsilon}$$
+Avec $v_t$ la moyenne mobile des carrés des gradients calculée comme suit :
+$$v_t = \beta_2 v_{t-1} + (1 - \beta_2) (\nabla_\theta \mathbb E_{\pi_\theta} G(\tau))^2$$
+où $\beta_2$ est un paramètre (typiquement $0.9$) et $\varepsilon$ une petite constante pour éviter la division par zéro (typiquement $10^{-8}$).
+
+### Adam
+Finalement Adam combine les deux avec une petite subtilité : on corrige les biais initiaux des moments ($m_t$ et $v_t$) en les divisant par $(1 - \beta_1^t)$ et $(1 - \beta_2^t)$ respectivement pour qu'ils ne soient pas trop proches de zéro au début de l'entraînement : 
+$$\hat{m}_t = \frac{m_t}{1 - \beta_1^t} \quad\text{et}\quad \hat{v}_t = \frac{v_t}{1 - \beta_2^t}$$
+
+Finalement la montée de gradient devient : 
+$$\theta \leftarrow \theta - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \varepsilon}$$
+
+Comme on doit stocker les gradients passés pour calculer $m_t$ et $v_t$, nous avons ajouté des champs dans la structure `LSTM` pour stocker ces valeurs (défini dans `struct.h`). Voici donc la structure complète : 
+```c
+typeshit struct LSTM {
+    int inputSize;
+    int hiddenSize;
+    int outputSize;
+
+    double* hiddenState;
+    double* cellState;
+    double* logits; // On est obligé de stocker ces valeurs
+    double* probs;  // pour la backpropagation
+
+    double** Wf;
+    double** Wi;
+    double** Wc;
+    double** Wo;
+    double** Wout;
+
+    double* Bf;
+    double* Bi;
+    double* Bc;
+    double* Bo;
+    double* Bout;
+
+    int adam_t; // Compteur de pas
+    double** Wf_m; 
+    double** Wf_v;
+    double** Wi_m; 
+    double** Wi_v;
+    double** Wc_m; 
+    double** Wc_v;
+    double** Wo_m; 
+    double** Wo_v;
+    double** Wout_m; 
+    double** Wout_v;
+
+    double* Bf_m; 
+    double* Bf_v;
+    double* Bi_m; 
+    double* Bi_v;
+    double* Bc_m; 
+    double* Bc_v;
+    double* Bo_m; 
+    double* Bo_v;
+    double* Bout_m; 
+    double* Bout_v;
+} LSTM;
+```
+
+Adam est directement implémenté dans la fonction `backpropagation` de `policy.c` : 
+```c
+    const double beta1 = 0.9;
+    const double beta2 = 0.999;
+    const double eps = 1e-8;
+    network->adam_t += 1;
+    double bc1 = 1.0 - pow(beta1, (double)network->adam_t);
+    double bc2 = 1.0 - pow(beta2, (double)network->adam_t);
+    double inv_bc1 = 1.0 / bc1;
+    double inv_bc2 = 1.0 / bc2;
+
+    for (int a = 0; a < Z; a++) {
+        for (int j = 0; j < H; j++) {
+            double g;
+            
+            g = dWf[a][j] * scale;
+            network->Wf_m[a][j] = beta1 * network->Wf_m[a][j] + (1.0 - beta1) * g;
+            network->Wf_v[a][j] = beta2 * network->Wf_v[a][j] + (1.0 - beta2) * (g * g);
+            double mhat = network->Wf_m[a][j] * inv_bc1;
+            double vhat = network->Wf_v[a][j] * inv_bc2;
+            network->Wf[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
+            
+            g = dWi[a][j] * scale;
+            network->Wi_m[a][j] = beta1 * network->Wi_m[a][j] + (1.0 - beta1) * g;
+            network->Wi_v[a][j] = beta2 * network->Wi_v[a][j] + (1.0 - beta2) * (g * g);
+            mhat = network->Wi_m[a][j] * inv_bc1;
+            vhat = network->Wi_v[a][j] * inv_bc2;
+            network->Wi[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
+            
+            g = dWc[a][j] * scale;
+            network->Wc_m[a][j] = beta1 * network->Wc_m[a][j] + (1.0 - beta1) * g;
+            network->Wc_v[a][j] = beta2 * network->Wc_v[a][j] + (1.0 - beta2) * (g * g);
+            mhat = network->Wc_m[a][j] * inv_bc1;
+            vhat = network->Wc_v[a][j] * inv_bc2;
+            network->Wc[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
+            
+            g = dWo[a][j] * scale;
+            network->Wo_m[a][j] = beta1 * network->Wo_m[a][j] + (1.0 - beta1) * g;
+            network->Wo_v[a][j] = beta2 * network->Wo_v[a][j] + (1.0 - beta2) * (g * g);
+            mhat = network->Wo_m[a][j] * inv_bc1;
+            vhat = network->Wo_v[a][j] * inv_bc2;
+            network->Wo[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
+        }
+    }
+    for (int j = 0; j < H; j++) {
+        for (int k = 0; k < O; k++) {
+            double g = dWout[j][k] * scale;
+            network->Wout_m[j][k] = beta1 * network->Wout_m[j][k] + (1.0 - beta1) * g;
+            network->Wout_v[j][k] = beta2 * network->Wout_v[j][k] + (1.0 - beta2) * (g * g);
+            double mhat = network->Wout_m[j][k] * inv_bc1;
+            double vhat = network->Wout_v[j][k] * inv_bc2;
+            network->Wout[j][k] += learningRate * (mhat / (sqrt(vhat) + eps));
+        }
+    }
+
+    for (int j = 0; j < H; j++) {
+        double g;
+        g = dBf[j] * scale;
+        network->Bf_m[j] = beta1 * network->Bf_m[j] + (1.0 - beta1) * g;
+        network->Bf_v[j] = beta2 * network->Bf_v[j] + (1.0 - beta2) * (g * g);
+        double mhat = network->Bf_m[j] * inv_bc1;
+        double vhat = network->Bf_v[j] * inv_bc2;
+        network->Bf[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+
+        g = dBi[j] * scale;
+        network->Bi_m[j] = beta1 * network->Bi_m[j] + (1.0 - beta1) * g;
+        network->Bi_v[j] = beta2 * network->Bi_v[j] + (1.0 - beta2) * (g * g);
+        mhat = network->Bi_m[j] * inv_bc1;
+        vhat = network->Bi_v[j] * inv_bc2;
+        network->Bi[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+
+        g = dBc[j] * scale;
+        network->Bc_m[j] = beta1 * network->Bc_m[j] + (1.0 - beta1) * g;
+        network->Bc_v[j] = beta2 * network->Bc_v[j] + (1.0 - beta2) * (g * g);
+        mhat = network->Bc_m[j] * inv_bc1;
+        vhat = network->Bc_v[j] * inv_bc2;
+        network->Bc[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+
+        g = dBo[j] * scale;
+        network->Bo_m[j] = beta1 * network->Bo_m[j] + (1.0 - beta1) * g;
+        network->Bo_v[j] = beta2 * network->Bo_v[j] + (1.0 - beta2) * (g * g);
+        mhat = network->Bo_m[j] * inv_bc1;
+        vhat = network->Bo_v[j] * inv_bc2;
+        network->Bo[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+    }
+    
+    for (int k = 0; k < O; k++) {
+        double g = dBout[k] * scale;
+        network->Bout_m[k] = beta1 * network->Bout_m[k] + (1.0 - beta1) * g;
+        network->Bout_v[k] = beta2 * network->Bout_v[k] + (1.0 - beta2) * (g * g);
+        double mhat = network->Bout_m[k] * inv_bc1;
+        double vhat = network->Bout_v[k] * inv_bc2;
+        network->Bout[k] += learningRate * (mhat / (sqrt(vhat) + eps));
+    }
+```
