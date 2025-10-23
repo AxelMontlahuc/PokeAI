@@ -418,5 +418,96 @@ entropyBonus(tr->probs[t], O, ENTROPY_COEFF, dlogits);
 ```
 
 ## Normalisation
+Notre code utilise deux types de normalisation : la normalisation des récompenses et la normalisation du gradient. 
+
+### Normalisation des récompenses
+La normalisation des récompenses permet de stabiliser l'entraînement en s'assurant que les récompenses ont une moyenne nulle et un écart-type unitaire. Cela aide à éviter que les gradients ne deviennent trop grands ou trop petits, ce qui tuerait l'apprentissage.
+
+Pour normaliser les récompenses, on utlilise la formule suivante :
+$$G_{\text{normé}}(t) = \frac{G(t) - \hat G}{\sigma_G}$$
+où $\hat G$ est la moyenne des récompenses et $\sigma_G$ est l'écart-type des récompenses.
+
+Voici l'implémentation dans `rewards.c` : 
+```c
+void normRewards(double* G, int n) {
+    double mean = 0.0;
+    for (int i = 0; i < n; i++) mean += G[i];
+    mean /= (double)n;
+
+    double var = 0.0;
+    for (int i = 0; i < n; i++) {
+        double d = G[i] - mean;
+        var += d * d;
+    }
+    var /= (double)n;
+    double std = sqrt(var) + 1e-8;
+
+    for (int i = 0; i < n; i++) G[i] = (G[i] - mean) / std;
+}
+```
+
+### Normalisation des gradients
+La normalisation des gradients permet d'avoir un apprentissage plus stable en évitant notamment le problème d'explosion des gradients (les gradients divergent). 
+
+Ici on utilise le _L2 norm clipping_ qui consiste à calculer la norme 2 du gradient et à le redimensionner si elle dépasse un certain seuil $c$.
+
+La formule de la norme $L2$ d'un vecteur $\theta$ est la suivante :
+$$\|\theta\|_2 = \sqrt{\sum_i \theta_i^2}$$
+
+Si $\|\nabla_\theta\|_2 > c$ alors on redimensionne le gradient comme suit :
+$$\nabla_\theta \leftarrow \nabla_\theta \cdot \frac{c}{\|\nabla_\theta\|_2}$$
+
+Voici l'implémentation dans  la fonction `backpropagation` de `policy.c` : 
+```c
+double clip = 1.0; 
+double norm2 = 0.0;
+for (int a = 0; a < Z; a++) { 
+    for (int j = 0; j < H; j++) { 
+        norm2 += dWf[a][j]*dWf[a][j]; 
+        norm2 += dWi[a][j]*dWi[a][j]; 
+        norm2 += dWc[a][j]*dWc[a][j]; 
+        norm2 += dWo[a][j]*dWo[a][j]; 
+    } 
+}
+for (int j = 0; j < H; j++) { 
+    for (int k = 0; k < O; k++) norm2 += dWout[j][k]*dWout[j][k]; 
+}
+for (int j = 0; j < H; j++) norm2 += dBf[j]*dBf[j] + dBi[j]*dBi[j] + dBc[j]*dBc[j] + dBo[j]*dBo[j];
+for (int k = 0; k < O; k++) norm2 += dBout[k]*dBout[k];
+
+double norm = sqrt(norm2); 
+double scale = (norm > clip) ? (clip / (norm + 1e-12)) : 1.0;
+```
+Puis chaque gradient est multiplié par `scale` : 
+```c
+g = dWf[a][j] * scale;
+```
+```c
+g = dWi[a][j] * scale;
+```
+```c
+g = dWc[a][j] * scale;
+```
+```c
+g = dWo[a][j] * scale;
+```
+```c
+double g = dWout[j][k] * scale;
+```
+```c
+g = dBf[j] * scale;
+```
+```c
+g = dBi[j] * scale;
+```
+```c
+g = dBc[j] * scale;
+```
+```c
+g = dBo[j] * scale;
+```
+```c
+double g = dBout[k] * scale;
+```
 
 ## Adam
