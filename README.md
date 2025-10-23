@@ -346,14 +346,21 @@ Lorsque $T$ est grand, les probabilités sont plus uniformes (favorisant l'explo
 
 Cela se traduit dans le code par l'argument `temperature` dans la fonction `forward` où est implémenté le softmax dans `policy.c` :
 ```c
-  double sum = 0.0;
-  for (int k=0; k<network->outputSize; k++) {
-      network->probs[k] = exp(network->logits[k] / temperature);
-      sum += network->probs[k];
-  }
-  for (int k=0; k<network->outputSize; k++) {
-      network->probs[k] /= sum;
-  }
+int O = network->outputSize;
+double maxlog = network->logits[0];
+for (int k = 1; k < O; k++) {
+    if (network->logits[k] > maxlog) maxlog = network->logits[k];
+}
+
+double sum = 0.0;
+for (int k = 0; k < O; k++) {
+    double z = (network->logits[k] - maxlog) / temperature;
+    double e = exp(z);
+    network->probs[k] = e;
+    sum += e;
+}
+double inv = 1.0 / (sum + 1e-12);
+for (int k = 0; k < O; k++) network->probs[k] *= inv;
 ```
 On fait donc baisser la température au fur et à mesure de l'entraînement pour favoriser l'exploitation une fois que l'agent a suffisamment exploré l'environnement. 
 
@@ -595,96 +602,96 @@ typeshit struct LSTM {
 
 Adam est directement implémenté dans la fonction `backpropagation` de `policy.c` : 
 ```c
-    const double beta1 = 0.9;
-    const double beta2 = 0.999;
-    const double eps = 1e-8;
-    network->adam_t += 1;
-    double bc1 = 1.0 - pow(beta1, (double)network->adam_t);
-    double bc2 = 1.0 - pow(beta2, (double)network->adam_t);
-    double inv_bc1 = 1.0 / bc1;
-    double inv_bc2 = 1.0 / bc2;
+const double beta1 = 0.9;
+const double beta2 = 0.999;
+const double eps = 1e-8;
+network->adam_t += 1;
+double bc1 = 1.0 - pow(beta1, (double)network->adam_t);
+double bc2 = 1.0 - pow(beta2, (double)network->adam_t);
+double inv_bc1 = 1.0 / bc1;
+double inv_bc2 = 1.0 / bc2;
 
-    for (int a = 0; a < Z; a++) {
-        for (int j = 0; j < H; j++) {
-            double g;
-            
-            g = dWf[a][j] * scale;
-            network->Wf_m[a][j] = beta1 * network->Wf_m[a][j] + (1.0 - beta1) * g;
-            network->Wf_v[a][j] = beta2 * network->Wf_v[a][j] + (1.0 - beta2) * (g * g);
-            double mhat = network->Wf_m[a][j] * inv_bc1;
-            double vhat = network->Wf_v[a][j] * inv_bc2;
-            network->Wf[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
-            
-            g = dWi[a][j] * scale;
-            network->Wi_m[a][j] = beta1 * network->Wi_m[a][j] + (1.0 - beta1) * g;
-            network->Wi_v[a][j] = beta2 * network->Wi_v[a][j] + (1.0 - beta2) * (g * g);
-            mhat = network->Wi_m[a][j] * inv_bc1;
-            vhat = network->Wi_v[a][j] * inv_bc2;
-            network->Wi[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
-            
-            g = dWc[a][j] * scale;
-            network->Wc_m[a][j] = beta1 * network->Wc_m[a][j] + (1.0 - beta1) * g;
-            network->Wc_v[a][j] = beta2 * network->Wc_v[a][j] + (1.0 - beta2) * (g * g);
-            mhat = network->Wc_m[a][j] * inv_bc1;
-            vhat = network->Wc_v[a][j] * inv_bc2;
-            network->Wc[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
-            
-            g = dWo[a][j] * scale;
-            network->Wo_m[a][j] = beta1 * network->Wo_m[a][j] + (1.0 - beta1) * g;
-            network->Wo_v[a][j] = beta2 * network->Wo_v[a][j] + (1.0 - beta2) * (g * g);
-            mhat = network->Wo_m[a][j] * inv_bc1;
-            vhat = network->Wo_v[a][j] * inv_bc2;
-            network->Wo[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
-        }
-    }
-    for (int j = 0; j < H; j++) {
-        for (int k = 0; k < O; k++) {
-            double g = dWout[j][k] * scale;
-            network->Wout_m[j][k] = beta1 * network->Wout_m[j][k] + (1.0 - beta1) * g;
-            network->Wout_v[j][k] = beta2 * network->Wout_v[j][k] + (1.0 - beta2) * (g * g);
-            double mhat = network->Wout_m[j][k] * inv_bc1;
-            double vhat = network->Wout_v[j][k] * inv_bc2;
-            network->Wout[j][k] += learningRate * (mhat / (sqrt(vhat) + eps));
-        }
-    }
-
+for (int a = 0; a < Z; a++) {
     for (int j = 0; j < H; j++) {
         double g;
-        g = dBf[j] * scale;
-        network->Bf_m[j] = beta1 * network->Bf_m[j] + (1.0 - beta1) * g;
-        network->Bf_v[j] = beta2 * network->Bf_v[j] + (1.0 - beta2) * (g * g);
-        double mhat = network->Bf_m[j] * inv_bc1;
-        double vhat = network->Bf_v[j] * inv_bc2;
-        network->Bf[j] += learningRate * (mhat / (sqrt(vhat) + eps));
-
-        g = dBi[j] * scale;
-        network->Bi_m[j] = beta1 * network->Bi_m[j] + (1.0 - beta1) * g;
-        network->Bi_v[j] = beta2 * network->Bi_v[j] + (1.0 - beta2) * (g * g);
-        mhat = network->Bi_m[j] * inv_bc1;
-        vhat = network->Bi_v[j] * inv_bc2;
-        network->Bi[j] += learningRate * (mhat / (sqrt(vhat) + eps));
-
-        g = dBc[j] * scale;
-        network->Bc_m[j] = beta1 * network->Bc_m[j] + (1.0 - beta1) * g;
-        network->Bc_v[j] = beta2 * network->Bc_v[j] + (1.0 - beta2) * (g * g);
-        mhat = network->Bc_m[j] * inv_bc1;
-        vhat = network->Bc_v[j] * inv_bc2;
-        network->Bc[j] += learningRate * (mhat / (sqrt(vhat) + eps));
-
-        g = dBo[j] * scale;
-        network->Bo_m[j] = beta1 * network->Bo_m[j] + (1.0 - beta1) * g;
-        network->Bo_v[j] = beta2 * network->Bo_v[j] + (1.0 - beta2) * (g * g);
-        mhat = network->Bo_m[j] * inv_bc1;
-        vhat = network->Bo_v[j] * inv_bc2;
-        network->Bo[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+        
+        g = dWf[a][j] * scale;
+        network->Wf_m[a][j] = beta1 * network->Wf_m[a][j] + (1.0 - beta1) * g;
+        network->Wf_v[a][j] = beta2 * network->Wf_v[a][j] + (1.0 - beta2) * (g * g);
+        double mhat = network->Wf_m[a][j] * inv_bc1;
+        double vhat = network->Wf_v[a][j] * inv_bc2;
+        network->Wf[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
+        
+        g = dWi[a][j] * scale;
+        network->Wi_m[a][j] = beta1 * network->Wi_m[a][j] + (1.0 - beta1) * g;
+        network->Wi_v[a][j] = beta2 * network->Wi_v[a][j] + (1.0 - beta2) * (g * g);
+        mhat = network->Wi_m[a][j] * inv_bc1;
+        vhat = network->Wi_v[a][j] * inv_bc2;
+        network->Wi[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
+        
+        g = dWc[a][j] * scale;
+        network->Wc_m[a][j] = beta1 * network->Wc_m[a][j] + (1.0 - beta1) * g;
+        network->Wc_v[a][j] = beta2 * network->Wc_v[a][j] + (1.0 - beta2) * (g * g);
+        mhat = network->Wc_m[a][j] * inv_bc1;
+        vhat = network->Wc_v[a][j] * inv_bc2;
+        network->Wc[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
+        
+        g = dWo[a][j] * scale;
+        network->Wo_m[a][j] = beta1 * network->Wo_m[a][j] + (1.0 - beta1) * g;
+        network->Wo_v[a][j] = beta2 * network->Wo_v[a][j] + (1.0 - beta2) * (g * g);
+        mhat = network->Wo_m[a][j] * inv_bc1;
+        vhat = network->Wo_v[a][j] * inv_bc2;
+        network->Wo[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
     }
-    
+}
+for (int j = 0; j < H; j++) {
     for (int k = 0; k < O; k++) {
-        double g = dBout[k] * scale;
-        network->Bout_m[k] = beta1 * network->Bout_m[k] + (1.0 - beta1) * g;
-        network->Bout_v[k] = beta2 * network->Bout_v[k] + (1.0 - beta2) * (g * g);
-        double mhat = network->Bout_m[k] * inv_bc1;
-        double vhat = network->Bout_v[k] * inv_bc2;
-        network->Bout[k] += learningRate * (mhat / (sqrt(vhat) + eps));
+        double g = dWout[j][k] * scale;
+        network->Wout_m[j][k] = beta1 * network->Wout_m[j][k] + (1.0 - beta1) * g;
+        network->Wout_v[j][k] = beta2 * network->Wout_v[j][k] + (1.0 - beta2) * (g * g);
+        double mhat = network->Wout_m[j][k] * inv_bc1;
+        double vhat = network->Wout_v[j][k] * inv_bc2;
+        network->Wout[j][k] += learningRate * (mhat / (sqrt(vhat) + eps));
     }
+}
+
+for (int j = 0; j < H; j++) {
+    double g;
+    g = dBf[j] * scale;
+    network->Bf_m[j] = beta1 * network->Bf_m[j] + (1.0 - beta1) * g;
+    network->Bf_v[j] = beta2 * network->Bf_v[j] + (1.0 - beta2) * (g * g);
+    double mhat = network->Bf_m[j] * inv_bc1;
+    double vhat = network->Bf_v[j] * inv_bc2;
+    network->Bf[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+
+    g = dBi[j] * scale;
+    network->Bi_m[j] = beta1 * network->Bi_m[j] + (1.0 - beta1) * g;
+    network->Bi_v[j] = beta2 * network->Bi_v[j] + (1.0 - beta2) * (g * g);
+    mhat = network->Bi_m[j] * inv_bc1;
+    vhat = network->Bi_v[j] * inv_bc2;
+    network->Bi[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+
+    g = dBc[j] * scale;
+    network->Bc_m[j] = beta1 * network->Bc_m[j] + (1.0 - beta1) * g;
+    network->Bc_v[j] = beta2 * network->Bc_v[j] + (1.0 - beta2) * (g * g);
+    mhat = network->Bc_m[j] * inv_bc1;
+    vhat = network->Bc_v[j] * inv_bc2;
+    network->Bc[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+
+    g = dBo[j] * scale;
+    network->Bo_m[j] = beta1 * network->Bo_m[j] + (1.0 - beta1) * g;
+    network->Bo_v[j] = beta2 * network->Bo_v[j] + (1.0 - beta2) * (g * g);
+    mhat = network->Bo_m[j] * inv_bc1;
+    vhat = network->Bo_v[j] * inv_bc2;
+    network->Bo[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+}
+
+for (int k = 0; k < O; k++) {
+    double g = dBout[k] * scale;
+    network->Bout_m[k] = beta1 * network->Bout_m[k] + (1.0 - beta1) * g;
+    network->Bout_v[k] = beta2 * network->Bout_v[k] + (1.0 - beta2) * (g * g);
+    double mhat = network->Bout_m[k] * inv_bc1;
+    double vhat = network->Bout_v[k] * inv_bc2;
+    network->Bout[k] += learningRate * (mhat / (sqrt(vhat) + eps));
+}
 ```

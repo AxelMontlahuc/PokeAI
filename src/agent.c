@@ -28,16 +28,14 @@ static const MGBAButton ACTIONS[ACTION_COUNT] = {
     MGBA_BUTTON_A, MGBA_BUTTON_B
 };
 
-MGBAButton chooseAction(double* probs) {
+int chooseAction(double* p, int n) {
     double r = (double)rand() / RAND_MAX;
-    double cumulative = 0.0;
-    for (int i = 0; i < ACTION_COUNT; i++) {
-        cumulative += probs[i];
-        if (r <= cumulative) {
-            return ACTIONS[i];
-        }
+    double c = 0.0;
+    for (int i = 0; i < n; i++) {
+        c += p[i];
+        if (r < c || i == n - 1) return i;
     }
-    return ACTIONS[5];
+    return n - 1;
 }
 
 trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double temperature, double epsilon) {
@@ -53,22 +51,24 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         traj->states[i] = fetchState(conn);
 
         double* input_vec = convertState(traj->states[i]);
-        double* distribution = forward(network, input_vec, temperature);
+        double* probs = forward(network, input_vec, temperature);
 
         traj->probs[i] = malloc(ACTION_COUNT * sizeof(double));
         assert(traj->probs[i] != NULL);
+        for (int k=0; k<ACTION_COUNT; k++) traj->probs[i][k] = probs[k];
+        
+        double prob_eps[ACTION_COUNT];
+        double uni = 1.0 / (double)ACTION_COUNT;
+        for (int k=0; k<ACTION_COUNT; k++) prob_eps[k] = (1.0 - epsilon) * traj->probs[i][k] + epsilon * uni;
 
-        for (int k=0; k<ACTION_COUNT; k++) traj->probs[i][k] = distribution[k];
-        if (((double)rand() / RAND_MAX) < epsilon) {
-            traj->actions[i] = ACTIONS[rand() % ACTION_COUNT];
-        } else {
-            traj->actions[i] = chooseAction(distribution);
-        }
+        traj->actions[i] =  ACTIONS[chooseAction(prob_eps, ACTION_COUNT)];
 
-        mgba_press_button(&conn, traj->actions[i], 20);
+        mgba_press_button(&conn, traj->actions[i], 50);
 
         state s_next = fetchState(conn);
         traj->rewards[i] = pnl(traj->states[i], s_next);
+
+        free(input_vec);
     }
 
     return traj;
@@ -147,17 +147,16 @@ int main() {
         double ep_max = -1e300;
 
         for (int t=0; t<trajectories; t += batch_size) {
-            int m = (t + batch_size <= trajectories) ? batch_size : (trajectories - t);
-            trajectory** batch = malloc(m * sizeof(trajectory*));
+            trajectory** batch = malloc(batch_size * sizeof(trajectory*));
             assert(batch != NULL);
 
-            double* batch_returns = malloc(m * sizeof(double));
+            double* batch_returns = malloc(batch_size * sizeof(double));
             assert(batch_returns != NULL);
             int action_counts[ACTION_COUNT] = {0};
             double entropy_sum = 0.0;
             int entropy_count = 0;
 
-            for (int b=0; b<m; b++) {
+            for (int b=0; b<batch_size; b++) {
                 batch[b] = runTrajectory(conn, network, steps, temperature, epsilon);
 
                 double ret = 0.0;
@@ -192,14 +191,14 @@ int main() {
             }
 
             double bsum = 0.0;
-            for (int b=0; b<m; b++) bsum += batch_returns[b];
-            double bmean = bsum / (double)m;
+            for (int b=0; b<batch_size; b++) bsum += batch_returns[b];
+            double bmean = bsum / (double)batch_size;
             double bvar = 0.0;
-            for (int b=0; b<m; b++) { double d = batch_returns[b] - bmean; bvar += d * d; }
-            bvar /= (double)m;
+            for (int b=0; b<batch_size; b++) { double d = batch_returns[b] - bmean; bvar += d * d; }
+            bvar /= (double)batch_size;
             double bstd = sqrt(bvar);
             double bmin = 1e300, bmax = -1e300;
-            for (int b=0; b<m; b++) { if (batch_returns[b] < bmin) bmin = batch_returns[b]; if (batch_returns[b] > bmax) bmax = batch_returns[b]; }
+            for (int b=0; b<batch_size; b++) { if (batch_returns[b] < bmin) bmin = batch_returns[b]; if (batch_returns[b] > bmax) bmax = batch_returns[b]; }
             double avg_entropy = (entropy_count > 0) ? (entropy_sum / (double)entropy_count) : 0.0;
 
             int total_actions = 0;
@@ -207,7 +206,7 @@ int main() {
 
             printf("\n-- Batch %d/%d --\n", (t / batch_size) + 1, (trajectories + batch_size - 1) / batch_size);
             printf("Returns: mean=% .4f  std=% .4f  min=% .4f  max=% .4f\n", bmean, bstd, bmin, bmax);
-            printf("Entropy: avg=% .4f   temp=%.3f  eps=%.3f  batch=%d  steps=%d\n", avg_entropy, temperature, epsilon, m, steps);
+            printf("Entropy: avg=% .4f   temp=%.3f  eps=%.3f  batch=%d  steps=%d\n", avg_entropy, temperature, epsilon, batch_size, steps);
             if (total_actions > 0) {
                 printf("Actions %%: U:%5.1f D:%5.1f L:%5.1f R:%5.1f A:%5.1f B:%5.1f\n",
                     100.0*action_counts[0]/(double)total_actions,
@@ -218,9 +217,9 @@ int main() {
                     100.0*action_counts[5]/(double)total_actions);
             }
 
-            backpropagation(network, 0.01, steps, batch, m, temperature, epsilon);
+            backpropagation(network, 0.01, steps, batch, batch_size, temperature, epsilon);
 
-            for (int b=0; b<m; b++) freeTrajectory(batch[b]);
+            for (int b=0; b<batch_size; b++) freeTrajectory(batch[b]);
             free(batch);
             free(batch_returns);
 
