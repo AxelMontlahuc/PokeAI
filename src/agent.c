@@ -118,7 +118,7 @@ int main() {
     while (true) {
         mgba_reset(&conn);
         
-        mgba_press_button(&conn, MGBA_BUTTON_B, 3000);
+        /*mgba_press_button(&conn, MGBA_BUTTON_B, 3000);
         mgba_press_button(&conn, MGBA_BUTTON_B, 500);
         mgba_press_button(&conn, MGBA_BUTTON_B, 2000);
 
@@ -134,7 +134,7 @@ int main() {
             mgba_press_button(&conn, MGBA_BUTTON_A, 50);
         }
         mgba_press_button(&conn, MGBA_BUTTON_B, 50);
-        mgba_press_button(&conn, MGBA_BUTTON_B, 50);
+        mgba_press_button(&conn, MGBA_BUTTON_B, 50);*/
 
         printf("\n========================================\n");
         printf("Episode %d\n", episode + 1);
