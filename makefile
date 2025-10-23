@@ -4,14 +4,26 @@ CSTD := -std=c99
 CFLAGS := $(CSTD) -Wall -Wextra -O2 -Isrc -ImGBA-interface/include
 
 # Detect platform for linker flags and file extensions
-UNAME_S := $(shell uname -s)
+# Prefer environment variable OS on Windows to avoid calling uname
+ifeq ($(OS),Windows_NT)
+	UNAME_S := Windows
+else
+	UNAME_S := $(shell uname -s)
+endif
+
 ifeq ($(UNAME_S),Linux)
 	LDFLAGS := -lm
 	EXE :=
 	MKDIR_P := mkdir -p
 	RM_RF := rm -rf
+else ifeq ($(UNAME_S),Darwin)
+	# macOS
+	LDFLAGS := -lm
+	EXE :=
+	MKDIR_P := mkdir -p
+	RM_RF := rm -rf
 else
-	# Assume Windows (MSYS/MinGW)
+	# Windows
 	LDFLAGS := -lws2_32 -lm
 	EXE := .exe
 	MKDIR_P := powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path"
@@ -48,7 +60,7 @@ TARGET := $(BIN_DIR)/agent$(EXE)
 all: $(TARGET)
 
 dirs:
-ifeq ($(UNAME_S),Linux)
+ifneq ($(UNAME_S),Windows)
 	@$(MKDIR_P) $(BUILD_DIR) $(BIN_DIR) $(BUILD_DIR)/src $(BUILD_DIR)/mGBA-interface $(BUILD_DIR)/mGBA-interface/src
 else
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)' | Out-Null"
@@ -72,7 +84,7 @@ run: $(TARGET)
 
 clean:
 	-@echo Cleaning...
-ifeq ($(UNAME_S),Linux)
+ifneq ($(UNAME_S),Windows)
 	-@$(RM_RF) $(BUILD_DIR) $(BIN_DIR)
 else
 	-@cmd /C rmdir /S /Q $(BUILD_DIR) $(BIN_DIR) 2> NUL || exit 0

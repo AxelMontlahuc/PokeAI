@@ -12,6 +12,9 @@
 #include "../mGBA-interface/include/mgba_intel.h"
 
 double pnl(state s, state s_next);
+double* discountedPNL(double* rewards, double gamma, int steps);
+void normPNL(double* G, int n);
 bool stop();
+void reset_flags();
 
 #endif

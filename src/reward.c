@@ -20,20 +20,12 @@ double pnl(state s, state s_next) {
         pnl += 2.5;
     }
 
-    if (!CLOCK_FLAG && s.zone == 257 && s_next.zone == 1) {
-        pnl -= 2.0;
-    }
-
-    if (!CLOCK_FLAG && ROOM_FLAG && s.zone == 1 && s_next.zone == 257) {
-        pnl += 1.5;
-    }
-
     if (!CLOCK_FLAG && s_next.clock == 80) {
         CLOCK_FLAG = true;
         pnl += 10.0;
     }
 
-    if (!OUTDOOR_FLAG && s_next.zone == 0) {
+    if (CLOCK_FLAG && !OUTDOOR_FLAG && s_next.zone == 0) {
         OUTDOOR_FLAG = true;
         pnl += 1.0;
     }
@@ -56,18 +48,46 @@ double pnl(state s, state s_next) {
         pnl += 5.0;
     }
 
-    /*for (int i = 0; i < 6; i += 1) {
-        if (s_next.team[i].level > s.team[i].level) {
-            pnl += 5.0;
-        }
-        if (s_next.team[i].HP <= s.team[i].HP/3) {
-            pnl -= 1.0;
-        }
-    }*/
-
     return pnl;
+}
+
+double* discountedPNL(double* rewards, double gamma, int steps) {
+    double* G = calloc(steps, sizeof(double));
+    assert(G != NULL);
+    
+    G[steps - 1] = rewards[steps - 1];
+    for (int t = steps - 2; t >= 0; t--) {
+        G[t] = rewards[t] + gamma * G[t+1];
+    }
+
+    return G;
+}
+
+void normPNL(double* G, int n) {
+    double mean = 0.0;
+    for (int i = 0; i < n; i++) mean += G[i];
+    mean /= (double)n;
+
+    double var = 0.0;
+    for (int i = 0; i < n; i++) {
+        double d = G[i] - mean;
+        var += d * d;
+    }
+    var /= (double)n;
+    double std = sqrt(var) + 1e-8;
+
+    for (int i = 0; i < n; i++) G[i] = (G[i] - mean) / std;
 }
 
 bool stop() {
     return CLOCK_FLAG;
+}
+
+void reset_flags() {
+    HOUSE_FLAG = false;
+    ROOM_FLAG = false;
+    CLOCK_FLAG = false;
+    OUTDOOR_FLAG = false;
+    OPP_HOUSE_FLAG = false;
+    OPP_ROOM_FLAG = false;
 }

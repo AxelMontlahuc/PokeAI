@@ -12,7 +12,6 @@
 #include "../mGBA-interface/include/mgba_intel.h"
 #include "../mGBA-interface/include/mgba_map.h"
 
-pokemon fetchPoke(MGBAConnection conn, int i);
 state fetchState(MGBAConnection conn);
 double* convertState(state s);
 

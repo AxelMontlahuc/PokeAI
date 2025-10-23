@@ -12,6 +12,8 @@
 
 #define typeshit typedef
 
+#define ACTION_COUNT 6
+
 typeshit struct pokemon {
     int maxHP;
     int HP;
@@ -24,17 +26,11 @@ typeshit struct pokemon {
 } pokemon;
 
 typeshit struct state {
-    MGBAMap* map0;
-    MGBAMap* map1;
-    MGBAMap* map2;
-    MGBAMap* map3;
-    int** bg0;
-    int** bg1;
-    int** bg2;
-    int** bg3;
-    pokemon* team;
-    int* enemy;
-    int* PP;
+    int bg0[32][32];
+    int bg2[32][32];
+    pokemon team[6];
+    int enemy[3];
+    int PP[4];
     int zone;
     int clock;
 } state;
@@ -42,19 +38,47 @@ typeshit struct state {
 typeshit struct LSTM {
     int inputSize;
     int hiddenSize;
+    int outputSize;
 
     double* hiddenState;
     double* cellState;
+    double* logits;
+    double* probs;
 
     double** Wf;
     double** Wi;
     double** Wc;
     double** Wo;
+    double** Wout;
 
     double* Bf;
     double* Bi;
     double* Bc;
     double* Bo;
+    double* Bout;
+
+    int adam_t;
+    double** Wf_m; 
+    double** Wf_v;
+    double** Wi_m; 
+    double** Wi_v;
+    double** Wc_m; 
+    double** Wc_v;
+    double** Wo_m; 
+    double** Wo_v;
+    double** Wout_m; 
+    double** Wout_v;
+
+    double* Bf_m; 
+    double* Bf_v;
+    double* Bi_m; 
+    double* Bi_v;
+    double* Bc_m; 
+    double* Bc_v;
+    double* Bo_m; 
+    double* Bo_v;
+    double* Bout_m; 
+    double* Bout_v;
 } LSTM;
 
 typeshit struct trajectory {
@@ -65,8 +89,7 @@ typeshit struct trajectory {
     int steps;
 } trajectory;
 
-void freeState(state s);
-LSTM* initLSTM(int inputSize, int hiddenSize);
+LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize);
 void freeLSTM(LSTM* network);
 trajectory* initTrajectory(int steps);
 void freeTrajectory(trajectory* traj);

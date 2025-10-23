@@ -7,19 +7,6 @@
 
 #include "mgba_connection.h"
 
-int get_max_HP(SOCKET sock, int pokemon);
-int get_HP(SOCKET sock, int pokemon);
-int get_level(SOCKET sock, int pokemon);
-int get_ATK(SOCKET sock, int pokemon);
-int get_DEF(SOCKET sock, int pokemon);
-int get_SPEED(SOCKET sock, int pokemon);
-int get_ATK_SPE(SOCKET sock, int pokemon);
-int get_DEF_SPE(SOCKET sock, int pokemon);
-int get_PP(SOCKET sock, int move);
-int get_enemy_max_HP(SOCKET sock);
-int get_enemy_HP(SOCKET sock);
-int get_enemy_level(SOCKET sock);
-int get_zone(SOCKET sock);
-int get_clock(SOCKET sock);
+int read_state(SOCKET sock, int* team_out, int* enemy_out, int* pp_out, int* zone_out, int* clock_out, int bg0_out[32][32], int bg2_out[32][32]);
 
 #endif

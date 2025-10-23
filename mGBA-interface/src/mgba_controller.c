@@ -1,23 +1,31 @@
 #include "../include/mgba_controller.h"
 
 const char* BUTTON_NAMES[] = {
-    "A", "B", "Select", "Start", "Right", "Left", "Up", "Down", "R", "L"
+    "Up", "Down", "Left", "Right", "A", "B", "Start"
 };
 
 const char* mgba_button_to_string(MGBAButton button) {
-    if (button >= MGBA_BUTTON_A && button <= MGBA_BUTTON_L) {
+    if (button >= MGBA_BUTTON_UP && button <= MGBA_BUTTON_START) {
         return BUTTON_NAMES[button];
     }
     return "Unknown";
 }
 
 int mgba_reset(MGBAConnection* conn) {
-    char message[] = "mgba-http.emu.reset";
-    char response[1024];
+    char message1[] = "mgba-http.emu.reset";
+    char response1[1024];
 
-    int result = mgba_send_command(conn, message, response, sizeof(response));
-    if (result < 0) {
-        return result;
+    int result1 = mgba_send_command(conn, message1, response1, sizeof(response1));
+    if (result1 < 0) {
+        return result1;
+    }
+
+    char message2[] = "mgba-http.emu.start";
+    char response2[1024];
+
+    int result2 = mgba_send_command(conn, message2, response2, sizeof(response2));
+    if (result2 < 0) {
+        return result2;
     }
 
     return 0;
