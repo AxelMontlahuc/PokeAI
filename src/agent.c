@@ -65,12 +65,10 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
             traj->actions[i] = chooseAction(distribution);
         }
 
-        mgba_press_button(&conn, traj->actions[i], 50);
+        mgba_press_button(&conn, traj->actions[i], 20);
 
         state s_next = fetchState(conn);
         traj->rewards[i] = pnl(traj->states[i], s_next);
-
-        freeState(s_next);
     }
 
     return traj;
@@ -83,8 +81,7 @@ int main() {
     unsigned int seed = (unsigned int)time(NULL);
     srand(seed);
 
-    //int inputSize = 4*(32*32) + 6*8 + 4 + 3 + 2;
-    int inputSize = 6*8 + 4 + 3 + 2;
+    int inputSize = 6*8 + 4 + 3 + 2 + 2*32*32;
     int hiddenSize = 128;
 
     uint64_t loaded_episodes = 0ULL;

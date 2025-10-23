@@ -26,17 +26,11 @@ typeshit struct pokemon {
 } pokemon;
 
 typeshit struct state {
-    /*MGBAMap* map0;
-    MGBAMap* map1;
-    MGBAMap* map2;
-    MGBAMap* map3;
-    int** bg0;
-    int** bg1;
-    int** bg2;
-    int** bg3;*/
-    pokemon* team;
-    int* enemy;
-    int* PP;
+    int bg0[32][32];
+    int bg2[32][32];
+    pokemon team[6];
+    int enemy[3];
+    int PP[4];
     int zone;
     int clock;
 } state;
@@ -95,7 +89,6 @@ typeshit struct trajectory {
     int steps;
 } trajectory;
 
-void freeState(state s);
 LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize);
 void freeLSTM(LSTM* network);
 trajectory* initTrajectory(int steps);

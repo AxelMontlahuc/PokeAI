@@ -135,6 +135,7 @@ function messageRouter(rawMessage)
 	elseif messageType == "memoryDomain.readRange" then returnValue = emu.memory[messageValue1]:readRange(tonumber(messageValue2), tonumber(messageValue3))
 	elseif messageType == "mgba-http.emu.reset" then returnValue = emu:reset()
 	elseif messageType == "mgba-http.emu.start" then returnValue = emu:loadStateSlot(1, 31)
+	elseif messageType == "bulk.readState" then returnValue = bulkReadState()
 	elseif (rawMessage == "<|ACK|>") then formattedLog("Connecting.")
 	elseif (rawMessage ~= nil or rawMessage ~= '') then formattedLog("Unable to route raw message: " .. rawMessage)
 	else formattedLog(messageType)	
@@ -208,6 +209,90 @@ function formattedLog(string)
 		local timestamp = "[" .. os.date("%X", os.time()) .. "] "
 		console:log(timestamp .. string)
 	end
+end
+
+-- ***********************
+-- Bulk State
+-- ***********************
+
+local function readVRAM2048(addr)
+	local raw = emu.memory.vram:readRange(addr, 2048)
+	local words = {}
+	for i = 1, 2048, 2 do
+		local lo = string.byte(raw, i) or 0
+		local hi = string.byte(raw, i+1) or 0
+		local w = lo + hi*256
+		table.insert(words, w)
+	end
+	return words -- length 1024
+end
+
+local function applyOffset32x32(words, xoff, yoff)
+	local out = {}
+	local tx = math.floor((xoff or 0) / 8)
+	local ty = math.floor((yoff or 0) / 8)
+	for r = 0, 31 do
+		for c = 0, 31 do
+			local sr = (r + ty) % 32
+			local sc = (c + tx) % 32
+			local idx = sr * 32 + sc + 1
+			out[#out+1] = words[idx]
+		end
+	end
+	return out
+end
+
+function bulkReadState()
+	local vals = {}
+
+	local function push(v)
+		vals[#vals+1] = tostring(v)
+	end
+
+	for i = 1, 6 do
+		local base
+		if i == 1 then base = 0x02024540 elseif i == 2 then base = 0x020245A4 elseif i == 3 then base = 0x02024608 elseif i == 4 then base = 0x0202466C elseif i == 5 then base = 0x020246D0 else base = 0x02024734 end
+		local level = emu.memory.wram:read8(base)
+		local HP = emu.memory.wram:read16(base + 0x02)
+		local maxHP = emu.memory.wram:read16(base + 0x04)
+		local ATK = emu.memory.wram:read16(base + 0x06)
+		local DEF = emu.memory.wram:read16(base + 0x08)
+		local SPEED = emu.memory.wram:read16(base + 0x0A)
+		local ATK_SPE = emu.memory.wram:read16(base + 0x0C)
+		local DEF_SPE = emu.memory.wram:read16(base + 0x0E)
+		push(maxHP); push(HP); push(level); push(ATK); push(DEF); push(SPEED); push(ATK_SPE); push(DEF_SPE)
+	end
+
+	do
+		local enemy_max = emu.memory.wram:read16(0x02024108)
+		local enemy_hp = emu.memory.wram:read16(0x02024104)
+		local enemy_lvl = emu.memory.wram:read8(0x02024106)
+		push(enemy_max); push(enemy_hp); push(enemy_lvl)
+	end
+
+	do
+		push(emu.memory.wram:read8(0x020240A8))
+		push(emu.memory.wram:read8(0x020240A9))
+		push(emu.memory.wram:read8(0x020240AA))
+		push(emu.memory.wram:read8(0x020240AB))
+	end
+
+	do
+		push(emu.memory.wram:read16(0x020322E4))
+		push(emu.memory.wram:read8(0x0203cd9c))
+	end
+
+	local xoff = emu.memory.io:read8(0x04000018)
+	local yoff = emu.memory.io:read8(0x0400001A)
+
+	local bg0 = readVRAM2048(0x0600f800)
+	local bg2w = readVRAM2048(0x0600e000)
+	local bg2 = applyOffset32x32(bg2w, xoff, yoff)
+
+	for i=1,1024 do push(bg0[i]) end
+	for i=1,1024 do push(bg2[i]) end
+
+	return table.concat(vals, ",")
 end
 
 -- ***********************
