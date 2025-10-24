@@ -83,6 +83,7 @@ typeshit struct LSTM {
 typeshit struct trajectory {
     state* states;
     double** probs;
+    double** behav_probs;
     MGBAButton* actions;
     double* rewards;
     int steps;

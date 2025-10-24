@@ -13,7 +13,7 @@ int write_batch_file(const char* path_tmp, const char* path_final, trajectory** 
 
     TrajFileHeader hdr = {0};
     hdr.magic = 0x30524A54u; // 'TRJ0' in little-endian
-    hdr.version = 1;
+    hdr.version = 2;
     hdr.steps = (uint32_t)steps;
     hdr.batch_size = (uint32_t)batch_size;
     hdr.action_count = ACTION_COUNT;
@@ -31,8 +31,11 @@ int write_batch_file(const char* path_tmp, const char* path_final, trajectory** 
         
         for (int i = 0; i < steps; i++) {
             uint16_t a = (uint16_t)t->actions[i];
-            if (write_exact(f, &t->states[i], sizeof(state)) != 0 || write_exact(f, t->probs[i], sizeof(double) * ACTION_COUNT) != 0 || 
-                write_exact(f, &a, sizeof(uint16_t)) != 0 || write_exact(f, &t->rewards[i], sizeof(double)) != 0) {
+            if (write_exact(f, &t->states[i], sizeof(state)) != 0 ||
+                write_exact(f, t->probs[i], sizeof(double) * ACTION_COUNT) != 0 ||
+                write_exact(f, t->behav_probs[i], sizeof(double) * ACTION_COUNT) != 0 ||
+                write_exact(f, &a, sizeof(uint16_t)) != 0 ||
+                write_exact(f, &t->rewards[i], sizeof(double)) != 0) {
                 fclose(f);
                 return -1;
             }
@@ -53,15 +56,15 @@ int read_batch_file(const char* path, trajectory*** out_batch, int* out_batch_si
     if (!f) return -1;
 
     TrajFileHeader hdr;
-    if (read_exact(f, &hdr, sizeof(hdr)) != 0) { 
-        fclose(f); 
-        return -1; 
-    }
+        if (read_exact(f, &hdr, sizeof(hdr)) != 0) { 
+            fclose(f); 
+            return -1; 
+        }
 
-    if (hdr.magic != 0x30524A54u || hdr.version != 1 || hdr.action_count != ACTION_COUNT || hdr.state_size != sizeof(state)) {
-        fclose(f);
-        return -1;
-    }
+        if (hdr.magic != 0x30524A54u || hdr.version != 2 || hdr.action_count != ACTION_COUNT || hdr.state_size != sizeof(state)) {
+            fclose(f);
+            return -1;
+        }
 
     int steps = (int)hdr.steps;
     int batch_size = (int)hdr.batch_size;
@@ -81,11 +84,14 @@ int read_batch_file(const char* path, trajectory*** out_batch, int* out_batch_si
 
         for (int i = 0; i < steps; i++) {
             t->probs[i] = (double*)malloc(sizeof(double) * ACTION_COUNT);
+            t->behav_probs[i] = (double*)malloc(sizeof(double) * ACTION_COUNT);
             uint16_t a16;
 
-            if (read_exact(f, &t->states[i], sizeof(state)) != 0 || !t->probs[i] || 
-                read_exact(f, t->probs[i], sizeof(double) * ACTION_COUNT) != 0 || read_exact(f, &a16, sizeof(uint16_t)) != 0 || 
-                read_exact(f, &t->rewards[i], sizeof(double)) != 0) { 
+            if (read_exact(f, &t->states[i], sizeof(state)) != 0 || !t->probs[i] || !t->behav_probs[i] ||
+                    read_exact(f, t->probs[i], sizeof(double) * ACTION_COUNT) != 0 ||
+                    read_exact(f, t->behav_probs[i], sizeof(double) * ACTION_COUNT) != 0 ||
+                    read_exact(f, &a16, sizeof(uint16_t)) != 0 ||
+                    read_exact(f, &t->rewards[i], sizeof(double)) != 0) { 
                 fclose(f); 
                 return -1; 
             }

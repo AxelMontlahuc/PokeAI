@@ -197,10 +197,12 @@ trajectory* initTrajectory(int steps) {
     traj->actions = malloc(steps * sizeof(MGBAButton));
     traj->rewards = malloc(steps * sizeof(double));
     traj->probs = malloc(steps * sizeof(double*));
-    assert(traj->states != NULL && traj->actions != NULL && traj->rewards != NULL && traj->probs != NULL);
+    traj->behav_probs = malloc(steps * sizeof(double*));
+    assert(traj->states != NULL && traj->actions != NULL && traj->rewards != NULL && traj->probs != NULL && traj->behav_probs != NULL);
 
     for (int i=0; i<steps; i++) {
         traj->probs[i] = NULL;
+        traj->behav_probs[i] = NULL;
     }
 
     traj->steps = steps;
@@ -212,9 +214,11 @@ void freeTrajectory(trajectory* traj) {
     free(traj->states);
     for (int i=0; i<traj->steps; i++) {
         free(traj->probs[i]);
+        free(traj->behav_probs[i]);
     }
     free(traj->actions);
     free(traj->rewards);
     free(traj->probs);
+    free(traj->behav_probs);
     free(traj);
 }

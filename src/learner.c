@@ -207,6 +207,9 @@ int main() {
         double avg_step_reward = (count_steps > 0) ? (sum_step_rewards / (double)count_steps) : 0.0;
 
         int action_counts[ACTION_COUNT] = {0};
+        
+        double behav_absdiff_sum = 0.0;
+        double uni = 1.0 / (double)ACTION_COUNT;
         for (int i = 0; i < total_traj; i++) {
             for (int t = 0; t < steps; t++) {
                 int idx;
@@ -220,6 +223,14 @@ int main() {
                     default: idx = 5; break;
                 }
                 action_counts[idx]++;
+
+                if (flat[i]->behav_probs && flat[i]->behav_probs[t] && flat[i]->probs && flat[i]->probs[t]) {
+                    for (int k = 0; k < ACTION_COUNT; k++) {
+                        double expected = (1.0 - epsilon) * flat[i]->probs[t][k] + epsilon * uni;
+                        double diff = fabs(flat[i]->behav_probs[t][k] - expected);
+                        behav_absdiff_sum += diff;
+                    }
+                }
             }
         }
 
@@ -239,6 +250,10 @@ int main() {
         printf("  Batch     : traj=%-4d steps=%-4d files=%-3d  eps=%-5.3f  temp=%-5.3f\n", total_traj, steps, n, epsilon, temperature);
         printf("  Rewards   : avg/step=%-8.5f  avg/traj=%-8.5f  p10=%-8.5f  p50=%-8.5f  p90=%-8.5f\n", avg_step_reward, avg_traj_return, p10, p50, p90);
         printf("  Entropy   : H=%-7.4f (mean across steps)\n", avg_entropy);
+        if (total_steps > 0) {
+            double behav_mean_absdiff = behav_absdiff_sum / (double)(total_steps * ACTION_COUNT);
+            printf("  EpsMix    : mean|b - mix(pi,eps)| = %-10.8f\n", behav_mean_absdiff);
+        }
         double upP = (total_steps>0)? (100.0 * (double)action_counts[0]/(double)total_steps) : 0.0;
         double dnP = (total_steps>0)? (100.0 * (double)action_counts[1]/(double)total_steps) : 0.0;
         double lfP = (total_steps>0)? (100.0 * (double)action_counts[2]/(double)total_steps) : 0.0;
@@ -345,7 +360,7 @@ int main() {
             printf("  PPO diag  : KL=%-8.6f  ratio mean=%-7.4f std=%-7.4f min=%-7.4f max=%-7.4f  clip@%.2f=%.3f\n",
                    mean_kl, mean_ratio, std_ratio, ratio_min, ratio_max, clip_eps, clip_frac);
             if (adv_flat) {
-                printf("             : surrogate(unclipped)=%-9.6f  adv mean=%-7.4f std=%-7.4f min=%-7.4f max=%-7.4f\n",
+                printf("            : surrogate(unclipped)=%-9.6f  adv mean=%-7.4f std=%-7.4f min=%-7.4f max=%-7.4f\n",
                        surrogate, adv_mean, sqrt(adv_var), adv_min, adv_max);
             } else {
                 printf("            : surrogate(unclipped)=n/a  adv= n/a\n");
