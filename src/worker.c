@@ -97,14 +97,11 @@ int main(int argc, char** argv) {
     unsigned int seed = (unsigned int)time(NULL);
     srand(seed);
 
-    int inputSize = INPUT_SIZE;
-    int hiddenSize = HIDDEN_SIZE;
-
     uint64_t loaded_episodes = 0ULL;
     uint64_t loaded_seed = 0ULL;
 
     LSTM* network = loadLSTM(CHECKPOINT_PATH, &loaded_episodes, &loaded_seed);
-    if (!network) network = initLSTM(inputSize, hiddenSize, ACTION_COUNT);
+    if (!network) network = initLSTM(INPUT_SIZE, HIDDEN_SIZE, ACTION_COUNT);
 
     int episode = (int)loaded_episodes;
     double temperature = TEMP_MIN;

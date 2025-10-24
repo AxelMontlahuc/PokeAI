@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "constants.h"
+
 #define ACTION_COUNT 6
 extern const int INPUT_SIZE;
 extern const int HIDDEN_SIZE;
@@ -37,5 +39,19 @@ extern double TARGET_KL;
 
 extern double GAMMA_DISCOUNT;
 extern double GAE_LAMBDA;
+
+extern double ENTROPY_COEFF;
+extern double VALUE_COEFF;
+extern double VALUE_CLIP_EPS;
+extern double GRAD_CLIP_NORM;
+
+extern double ADAM_BETA1;
+extern double ADAM_BETA2;
+extern double ADAM_EPS;
+
+extern const uint32_t TRAJ_MAGIC;
+extern const uint16_t TRAJ_VERSION;
+extern const char CKPT_MAGIC[8];
+extern const uint32_t CKPT_VERSION;
 
 #endif

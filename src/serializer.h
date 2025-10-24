@@ -8,6 +8,7 @@
 #include <assert.h>
 
 #include "struct.h"
+#include "constants.h"
 
 typedef struct {
     uint32_t magic;        // 'TRJ0'

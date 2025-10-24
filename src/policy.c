@@ -1,10 +1,6 @@
 #include "policy.h"
 #include "state.h"
-
-static const double ENTROPY_COEFF = 0.05;
-static const double PPO_CLIP_EPS = 0.20;
-static const double VALUE_COEFF = 0.50;
-static const double VALUE_CLIP_EPS = 0.20;
+#include "constants.h"
 
 void entropyBonus(const double* probs, int O, double coeff, double* dlogits) {
     double mean_logp = 0.0;
@@ -175,14 +171,12 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     double* allA = malloc(totalSteps * sizeof(double));
     assert(As && Rs && allA);
 
-    const double gamma = 0.90;
-    const double gae_lambda = 0.95;
     int cur = 0;
     for (int b = 0; b < batchCount; b++) {
         As[b] = malloc(T * sizeof(double));
         Rs[b] = malloc(T * sizeof(double));
         assert(As[b] && Rs[b]);
-        compute_gae(trajectories[b]->rewards, trajectories[b]->values, T, gamma, gae_lambda, As[b], Rs[b]);
+        compute_gae(trajectories[b]->rewards, trajectories[b]->values, T, GAMMA_DISCOUNT, GAE_LAMBDA, As[b], Rs[b]);
         for (int t = 0; t < T; t++) allA[cur++] = As[b][t];
     }
 
@@ -330,8 +324,8 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             double ratio = exp(logp_new - logp_old);
             double A = As[b][t];
 
-            double low = 1.0 - PPO_CLIP_EPS;
-            double high = 1.0 + PPO_CLIP_EPS;
+            double low = 1.0 - CLIP_EPS;
+            double high = 1.0 + CLIP_EPS;
             bool clipped = (A > 0.0 && ratio > high) || (A < 0.0 && ratio < low);
             double grad_weight = clipped ? 0.0 : (ratio * A);
 
@@ -476,7 +470,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     }
     for (int k = 0; k < O; k++) dBout[k] *= invM;
 
-    double clip = 1.0; 
+    double clip = GRAD_CLIP_NORM; 
     double norm2 = 0.0;
     for (int a = 0; a < Z; a++) { 
         for (int j = 0; j < H; j++) { 
@@ -500,9 +494,9 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
         stats->clip_scale = scale;
     }
 
-    const double beta1 = 0.9;
-    const double beta2 = 0.999;
-    const double eps = 1e-8;
+    const double beta1 = ADAM_BETA1;
+    const double beta2 = ADAM_BETA2;
+    const double eps = ADAM_EPS;
     network->adam_t += 1;
     double bc1 = 1.0 - pow(beta1, (double)network->adam_t);
     double bc2 = 1.0 - pow(beta2, (double)network->adam_t);

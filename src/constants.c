@@ -33,3 +33,17 @@ double TARGET_KL = 0.02;
 
 double GAMMA_DISCOUNT = 0.90;
 double GAE_LAMBDA = 0.95;
+
+double ENTROPY_COEFF = 0.05;
+double VALUE_COEFF = 0.50;
+double VALUE_CLIP_EPS = 0.20;
+double GRAD_CLIP_NORM = 1.0;
+
+double ADAM_BETA1 = 0.9;
+double ADAM_BETA2 = 0.999;
+double ADAM_EPS = 1e-8;
+
+const uint32_t TRAJ_MAGIC = 0x30524A54u; // 'TRJ0'
+const uint16_t TRAJ_VERSION = 4;
+const char CKPT_MAGIC[8] = { 'L','S','T','M','S','A','V','\0' };
+const uint32_t CKPT_VERSION = 2u;

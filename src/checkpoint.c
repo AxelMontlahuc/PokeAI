@@ -1,4 +1,5 @@
 #include "checkpoint.h"
+#include "constants.h"
 
 static int write_exact(FILE* f, const void* buf, size_t sz) {
     return fwrite(buf, 1, sz, f) == sz ? 0 : -1;
@@ -8,8 +9,8 @@ static int read_exact(FILE* f, void* buf, size_t sz) {
     return fread(buf, 1, sz, f) == sz ? 0 : -1;
 }
 
-static const char MAGIC[8] = { 'L','S','T','M','S','A','V','\0' };
-static const uint32_t VERSION = 2u;
+/* Use centralized checkpoint identifiers */
+/* MAGIC and VERSION are now defined in constants.{h,c} as CKPT_MAGIC/CKPT_VERSION */
 
 int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_t rng_seed) {
     FILE* f = fopen(path, "wb");
@@ -21,7 +22,7 @@ int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_
     uint64_t episodes = step;
     uint64_t seed = rng_seed;
 
-    if (write_exact(f, MAGIC, sizeof(MAGIC)) != 0 || write_exact(f, &VERSION, sizeof(VERSION)) != 0 ||
+    if (write_exact(f, CKPT_MAGIC, sizeof(CKPT_MAGIC)) != 0 || write_exact(f, &CKPT_VERSION, sizeof(CKPT_VERSION)) != 0 ||
         write_exact(f, &inputSize, sizeof(inputSize)) != 0 || write_exact(f, &hiddenSize, sizeof(hiddenSize)) != 0 ||
         write_exact(f, &outputSize, sizeof(outputSize)) != 0 || write_exact(f, &episodes, sizeof(episodes)) != 0 ||
         write_exact(f, &seed, sizeof(seed)) != 0) {
@@ -117,8 +118,8 @@ LSTM* loadLSTM(const char* path, uint64_t* episodes, uint64_t* rng_seed) {
     uint64_t episode_nmb;
     uint64_t seed;
 
-    if (read_exact(f, magic, sizeof(magic)) != 0 || memcmp(magic, MAGIC, 8) != 0 || 
-        read_exact(f, &version, sizeof(version)) != 0 || version != VERSION || 
+    if (read_exact(f, magic, sizeof(magic)) != 0 || memcmp(magic, CKPT_MAGIC, 8) != 0 || 
+        read_exact(f, &version, sizeof(version)) != 0 || version != CKPT_VERSION || 
         read_exact(f, &inputSize, sizeof(inputSize)) != 0 || read_exact(f, &hiddenSize, sizeof(hiddenSize)) != 0 || 
         read_exact(f, &outputSize, sizeof(outputSize)) != 0 || read_exact(f, &episode_nmb, sizeof(episode_nmb)) != 0 || 
         read_exact(f, &seed, sizeof(seed)) != 0) { 

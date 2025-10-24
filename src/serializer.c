@@ -12,8 +12,8 @@ int write_batch_file(const char* path_tmp, const char* path_final, trajectory** 
     assert(f != NULL);
 
     TrajFileHeader hdr = {0};
-    hdr.magic = 0x30524A54u; // 'TRJ0' in little-endian
-    hdr.version = 4;
+    hdr.magic = TRAJ_MAGIC; // 'TRJ0' in little-endian
+    hdr.version = TRAJ_VERSION;
     hdr.steps = (uint32_t)steps;
     hdr.batch_size = (uint32_t)batch_size;
     hdr.action_count = ACTION_COUNT;
@@ -60,7 +60,7 @@ int read_batch_file(const char* path, trajectory*** out_batch, int* out_batch_si
             return -1; 
         }
 
-        if (hdr.magic != 0x30524A54u || hdr.version != 4 || hdr.action_count != ACTION_COUNT || hdr.state_size != sizeof(state)) {
+        if (hdr.magic != TRAJ_MAGIC || hdr.version != TRAJ_VERSION || hdr.action_count != ACTION_COUNT || hdr.state_size != sizeof(state)) {
             fclose(f);
             return -1;
         }

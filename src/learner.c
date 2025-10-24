@@ -99,14 +99,11 @@ int main() {
     system(cmd);
 #endif
 
-    int inputSize = INPUT_SIZE;
-    int hiddenSize = HIDDEN_SIZE;
-
     uint64_t loaded_episodes = 0ULL;
     uint64_t loaded_seed = 0ULL;
 
     LSTM* network = loadLSTM(CHECKPOINT_PATH, &loaded_episodes, &loaded_seed);
-    if (!network) network = initLSTM(inputSize, hiddenSize, ACTION_COUNT);
+    if (!network) network = initLSTM(INPUT_SIZE, HIDDEN_SIZE, ACTION_COUNT);
 
     unsigned int seed = (unsigned int)((loaded_seed != 0) ? (unsigned int)loaded_seed : (unsigned int)time(NULL));
     srand(seed);
@@ -235,6 +232,7 @@ int main() {
         printf("  Batch     : traj=%-4d steps=%-4d files=%-3d  temp=%-5.3f\n", total_traj, steps, n, temperature);
         printf("  Rewards   : avg/step=%-8.5f  avg/traj=%-8.5f  p10=%-8.5f  p50=%-8.5f  p90=%-8.5f\n", avg_step_reward, avg_traj_return, p10, p50, p90);
         printf("  Entropy   : H=%-7.4f (mean across steps)\n", avg_entropy);
+
         if (count_steps > 0) {
             double mean_v = sum_values / (double)count_steps;
             double var_v = fmax(0.0, (sumsq_values / (double)count_steps) - (mean_v * mean_v));
@@ -252,8 +250,6 @@ int main() {
         double* adv_flat = NULL;
         double** A_per_traj = NULL;
         double** R_per_traj = NULL;
-        const double gamma = GAMMA_DISCOUNT;
-        const double gae_lambda = GAE_LAMBDA;
 
         if (total_steps > 0) {
             A_per_traj = malloc(sizeof(double*) * total_traj);
@@ -263,7 +259,7 @@ int main() {
             for (int b = 0; b < total_traj; b++) {
                 A_per_traj[b] = malloc(sizeof(double) * steps);
                 R_per_traj[b] = malloc(sizeof(double) * steps);
-                compute_gae(flat[b]->rewards, flat[b]->values, steps, gamma, gae_lambda, A_per_traj[b], R_per_traj[b]);
+                compute_gae(flat[b]->rewards, flat[b]->values, steps, GAMMA_DISCOUNT, GAE_LAMBDA, A_per_traj[b], R_per_traj[b]);
                 for (int t = 0; t < steps; t++) {
                     adv_flat[cur++] = A_per_traj[b][t];
                 }
@@ -301,7 +297,6 @@ int main() {
         free(indices);
 
         if (total_steps > 0) {
-            const double clip_eps = CLIP_EPS;
             double kl_sum = 0.0;
             double ratio_sum = 0.0;
             double ratio_sq_sum = 0.0;
@@ -341,7 +336,7 @@ int main() {
                         ratio_sq_sum += r * r;
                         if (r < ratio_min) ratio_min = r;
                         if (r > ratio_max) ratio_max = r;
-                        if (r < (1.0 - clip_eps) || r > (1.0 + clip_eps)) clip_count++;
+                        if (r < (1.0 - CLIP_EPS) || r > (1.0 + CLIP_EPS)) clip_count++;
                         if (adv_flat) surr_sum += r * adv_flat[flat_idx];
                     }
 
@@ -375,11 +370,9 @@ int main() {
                 adv_var /= (double)total_steps;
             }
 
-            printf("  PPO diag  : KL=%-8.6f  ratio mean=%-7.4f std=%-7.4f min=%-7.4f max=%-7.4f  clip@%.2f=%.3f\n",
-                   mean_kl, mean_ratio, std_ratio, ratio_min, ratio_max, clip_eps, clip_frac);
+            printf("  PPO diag  : KL=%-8.6f  ratio mean=%-7.4f std=%-7.4f min=%-7.4f max=%-7.4f  clip@%.2f=%.3f\n", mean_kl, mean_ratio, std_ratio, ratio_min, ratio_max, CLIP_EPS, clip_frac);
             if (adv_flat) {
-                printf("            : surrogate(unclipped)=%-9.6f  adv mean=%-7.4f std=%-7.4f min=%-7.4f max=%-7.4f\n",
-                       surrogate, adv_mean, sqrt(adv_var), adv_min, adv_max);
+                printf("            : surrogate(unclipped)=%-9.6f  adv mean=%-7.4f std=%-7.4f min=%-7.4f max=%-7.4f\n", surrogate, adv_mean, sqrt(adv_var), adv_min, adv_max);
             } else {
                 printf("            : surrogate(unclipped)=n/a  adv= n/a\n");
             }
