@@ -3,6 +3,8 @@
 
 static const double ENTROPY_COEFF = 0.05;
 static const double PPO_CLIP_EPS = 0.20;
+static const double VALUE_COEFF = 0.50;
+static const double VALUE_CLIP_EPS = 0.20;
 
 void entropyBonus(const double* probs, int O, double coeff, double* dlogits) {
     double mean_logp = 0.0;
@@ -216,7 +218,10 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     double* dBc = calloc(H, sizeof(double));
     double* dBo = calloc(H, sizeof(double));
     double* dBout = calloc(O, sizeof(double));
-    assert(dBf && dBi && dBc && dBo && dBout);
+    double* dWv = calloc(H, sizeof(double));
+    assert(dBf && dBi && dBc && dBo && dBout && dWv);
+
+    double dBv = 0.0;
 
     for (int b = 0; b < batchCount; b++) {
         trajectory* tr = trajectories[b];
@@ -344,6 +349,30 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             for (int j = 0; j < H; j++) dh[j] = dh_next[j];
             dL_dWout(network, dlogits, h[t], dWout, dBout, dh);
 
+            double v_t = network->Bv;
+            for (int j = 0; j < H; j++) v_t += h[t][j] * network->Wv[j];
+            double v_old = tr->values[t];
+            double R_t = Rs[b][t];
+            double grad_v;
+            if (VALUE_CLIP_EPS > 0.0) {
+                double v_low = v_old - VALUE_CLIP_EPS;
+                double v_high = v_old + VALUE_CLIP_EPS;
+                double v_t_clipped = fmin(fmax(v_t, v_low), v_high);
+                double un = (v_t - R_t) * (v_t - R_t);
+                double cl = (v_t_clipped - R_t) * (v_t_clipped - R_t);
+                if (un >= cl) {
+                    grad_v = 2.0 * VALUE_COEFF * (v_t - R_t);
+                } else {
+                    double dvclip_dv = (v_t > v_high || v_t < v_low) ? 0.0 : 1.0;
+                    grad_v = 2.0 * VALUE_COEFF * (v_t_clipped - R_t) * dvclip_dv;
+                }
+            } else {
+                grad_v = 2.0 * VALUE_COEFF * (v_t - R_t);
+            }
+            for (int j = 0; j < H; j++) dWv[j] += grad_v * h[t][j];
+            dBv += grad_v;
+            for (int j = 0; j < H; j++) dh[j] += grad_v * network->Wv[j];
+
             for (int j = 0; j < H; j++) do_vec[j] = dh[j] * tanh(c[t][j]);
             for (int j = 0; j < H; j++) d_o_pre[j] = do_vec[j] * o[t][j] * (1.0 - o[t][j]);
             for (int j = 0; j < H; j++) dc[j] = dh[j] * o[t][j] * (1.0 - tanh(c[t][j]) * tanh(c[t][j])) + dc_next[j];
@@ -463,7 +492,8 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     }
     for (int j = 0; j < H; j++) norm2 += dBf[j]*dBf[j] + dBi[j]*dBi[j] + dBc[j]*dBc[j] + dBo[j]*dBo[j];
     for (int k = 0; k < O; k++) norm2 += dBout[k]*dBout[k];
-
+    for (int j = 0; j < H; j++) norm2 += dWv[j]*dWv[j];
+    norm2 += dBv * dBv;
     double norm = sqrt(norm2); 
     double scale = (norm > clip) ? (clip / (norm + 1e-12)) : 1.0;
     if (stats) {
@@ -513,7 +543,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             network->Wo[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
         }
     }
-    
+
     for (int j = 0; j < H; j++) {
         for (int k = 0; k < O; k++) {
             double g = dWout[j][k] * scale;
@@ -565,6 +595,22 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
         network->Bout[k] += learningRate * (mhat / (sqrt(vhat) + eps));
     }
 
+    for (int j = 0; j < H; j++) {
+        double g = dWv[j] * scale;
+        network->Wv_m[j] = beta1 * network->Wv_m[j] + (1.0 - beta1) * g;
+        network->Wv_v[j] = beta2 * network->Wv_v[j] + (1.0 - beta2) * (g * g);
+        double mhat = network->Wv_m[j] * inv_bc1;
+        double vhat = network->Wv_v[j] * inv_bc2;
+        network->Wv[j] += learningRate * (mhat / (sqrt(vhat) + eps));
+    }
+
+    double g = dBv * scale;
+    network->Bv_m = beta1 * network->Bv_m + (1.0 - beta1) * g;
+    network->Bv_v = beta2 * network->Bv_v + (1.0 - beta2) * (g * g);
+    double mhat = network->Bv_m * inv_bc1;
+    double vhat = network->Bv_v * inv_bc2;
+    network->Bv += learningRate * (mhat / (sqrt(vhat) + eps));
+
     for (int a = 0; a < Z; a++) { 
         free(dWf[a]); 
         free(dWi[a]); 
@@ -582,6 +628,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     free(dBc);
     free(dBo);
     free(dBout);
+    free(dWv);
 
     for (int b = 0; b < batchCount; b++) { 
         free(As[b]); 
