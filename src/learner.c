@@ -272,20 +272,37 @@ int main() {
         printf("  Actions   : Up=%5.1f%%  Down=%5.1f%%  Left=%5.1f%%  Right=%5.1f%%  A=%5.1f%%  B=%5.1f%%\n", upP, dnP, lfP, rtP, aP, bP);
 
         double* adv_flat = NULL;
+        double** A_per_traj = NULL;
+        double** R_per_traj = NULL;
+        double** logp_old = NULL;
+        const double gamma = 0.90;
+        const double gae_lambda = 0.95;
         if (total_steps > 0) {
-            const double gamma = 0.90;
-            const double gae_lambda = 0.95;
-            adv_flat = (double*)malloc(sizeof(double) * total_steps);
-            int curG = 0;
+            A_per_traj = malloc(sizeof(double*) * total_traj);
+            R_per_traj = malloc(sizeof(double*) * total_traj);
+            logp_old = malloc(sizeof(double*) * total_traj);
+            adv_flat = malloc(sizeof(double) * total_steps);
+            int cur = 0;
             for (int b = 0; b < total_traj; b++) {
-                double* A = malloc(sizeof(double) * steps);
-                double* R = malloc(sizeof(double) * steps);
-                compute_gae(flat[b]->rewards, flat[b]->values, steps, gamma, gae_lambda, A, R);
-                for (int t = 0; t < steps; t++) adv_flat[curG++] = A[t];
-                free(A);
-                free(R);
+                A_per_traj[b] = malloc(sizeof(double) * steps);
+                R_per_traj[b] = malloc(sizeof(double) * steps);
+                logp_old[b] = malloc(sizeof(double) * steps);
+                compute_gae(flat[b]->rewards, flat[b]->values, steps, gamma, gae_lambda, A_per_traj[b], R_per_traj[b]);
+                for (int t = 0; t < steps; t++) {
+                    adv_flat[cur++] = A_per_traj[b][t];
+                    int aidx = actionToIndex(flat[b]->actions[t]);
+                    double p = fmax(flat[b]->probs[t][aidx], 1e-12);
+                    logp_old[b][t] = log(p);
+                }
             }
             normPNL(adv_flat, total_steps);
+            
+            int cur2 = 0;
+            for (int b = 0; b < total_traj; b++) {
+                for (int t = 0; t < steps; t++) {
+                    A_per_traj[b][t] = adv_flat[cur2++];
+                }
+            }
         }
 
         BackpropStats st = {0};

@@ -2,6 +2,7 @@
 #include "state.h"
 
 static const double ENTROPY_COEFF = 0.05;
+static const double PPO_CLIP_EPS = 0.20;
 
 void entropyBonus(const double* probs, int O, double coeff, double* dlogits) {
     double mean_logp = 0.0;
@@ -166,21 +167,28 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
 
     int T = steps;
     int totalSteps = batchCount * steps;
-    double** Gs = malloc(batchCount * sizeof(double*));
-    double* allG = malloc(totalSteps * sizeof(double));
-    assert(Gs != NULL && allG != NULL);
 
+    double** As = malloc(batchCount * sizeof(double*));
+    double** Rs = malloc(batchCount * sizeof(double*));
+    double* allA = malloc(totalSteps * sizeof(double));
+    assert(As && Rs && allA);
+
+    const double gamma = 0.90;
+    const double gae_lambda = 0.95;
     int cur = 0;
     for (int b = 0; b < batchCount; b++) {
-        Gs[b] = discountedPNL(trajectories[b]->rewards, 0.9, T);
-        for (int t = 0; t < T; t++) allG[cur++] = Gs[b][t];
+        As[b] = malloc(T * sizeof(double));
+        Rs[b] = malloc(T * sizeof(double));
+        assert(As[b] && Rs[b]);
+        compute_gae(trajectories[b]->rewards, trajectories[b]->values, T, gamma, gae_lambda, As[b], Rs[b]);
+        for (int t = 0; t < T; t++) allA[cur++] = As[b][t];
     }
 
-    normPNL(allG, totalSteps);
+    normPNL(allA, totalSteps);
 
     cur = 0;
     for (int b = 0; b < batchCount; b++) {
-        for (int t = 0; t < T; t++) Gs[b][t] = allG[cur++];
+        for (int t = 0; t < T; t++) As[b][t] = allA[cur++];
     }
 
     double** dWf = malloc(Z * sizeof(double*));
@@ -273,13 +281,13 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             for (int j = 0; j < H; j++) cprev_vec[j] = c[t][j];
         }
 
-        double* G = Gs[b];
-
         double* dh_next = calloc(H, sizeof(double));
         double* dc_next = calloc(H, sizeof(double));
         assert(dh_next && dc_next);
 
         double* dlogits = malloc(O * sizeof(double));
+        double* logits_now = malloc(O * sizeof(double));
+        double* probs_now = malloc(O * sizeof(double));
         double* dh = malloc(H * sizeof(double));
         double* do_vec = malloc(H * sizeof(double));
         double* d_o_pre = malloc(H * sizeof(double));
@@ -291,16 +299,43 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
         double* d_i_pre = malloc(H * sizeof(double));
         double* d_g_pre = malloc(H * sizeof(double));
         double* dz = malloc(Z * sizeof(double));
-        assert(dlogits && dh && do_vec && d_o_pre && dc && df && di_vec && dg && d_f_pre && d_i_pre && d_g_pre && dz);
+        assert(dlogits && logits_now && probs_now && dh && do_vec && d_o_pre && dc && df && di_vec && dg && d_f_pre && d_i_pre && d_g_pre && dz);
 
         for (int t = T - 1; t >= 0; t--) {
             int actionIndex = actionToIndex(tr->actions[t]);
+            double maxlog = -1e30;
             for (int k = 0; k < O; k++) {
-                double gadv = ((k == actionIndex) ? 1.0 : 0.0) - tr->probs[t][k];
-                dlogits[k] = gadv * G[t];
+                double s = network->Bout[k];
+                for (int j = 0; j < H; j++) s += h[t][j] * network->Wout[j][k];
+                logits_now[k] = s;
+                if (s > maxlog) maxlog = s;
+            }
+            double sum = 0.0;
+            for (int k = 0; k < O; k++) {
+                double z = (logits_now[k] - maxlog) / temperature;
+                double e = exp(z);
+                probs_now[k] = e;
+                sum += e;
+            }
+            double invsum = 1.0 / (sum + 1e-12);
+            for (int k = 0; k < O; k++) probs_now[k] *= invsum;
+
+            double logp_new = log(probs_now[actionIndex] + 1e-12);
+            double logp_old = log(tr->probs[t][actionIndex] + 1e-12);
+            double ratio = exp(logp_new - logp_old);
+            double A = As[b][t];
+
+            double low = 1.0 - PPO_CLIP_EPS;
+            double high = 1.0 + PPO_CLIP_EPS;
+            bool clipped = (A > 0.0 && ratio > high) || (A < 0.0 && ratio < low);
+            double grad_weight = clipped ? 0.0 : (ratio * A);
+
+            for (int k = 0; k < O; k++) {
+                double base = ((k == actionIndex) ? 1.0 : 0.0) - probs_now[k];
+                dlogits[k] = base * grad_weight;
             }
 
-            entropyBonus(tr->probs[t], O, ENTROPY_COEFF, dlogits);
+            entropyBonus(probs_now, O, ENTROPY_COEFF, dlogits);
 
             double inv_temp = 1.0 / temperature;
             double scale_eps = fmax(0.0, 1.0 - epsilon);
@@ -363,6 +398,8 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
         free(d_i_pre);
         free(d_g_pre);
         free(dz);
+        free(logits_now);
+        free(probs_now);
 
         for (int t = 0; t < T; t++) {
             free(x[t]);
@@ -476,6 +513,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             network->Wo[a][j] += learningRate * (mhat / (sqrt(vhat) + eps));
         }
     }
+    
     for (int j = 0; j < H; j++) {
         for (int k = 0; k < O; k++) {
             double g = dWout[j][k] * scale;
@@ -545,7 +583,12 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     free(dBo);
     free(dBout);
 
-    for (int b = 0; b < batchCount; b++) free(Gs[b]);
-    free(Gs);
-    free(allG);
+    for (int b = 0; b < batchCount; b++) { 
+        free(As[b]); 
+        free(Rs[b]); 
+    }
+
+    free(As);
+    free(Rs);
+    free(allA);
 }
