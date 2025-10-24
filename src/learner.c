@@ -184,11 +184,11 @@ int main() {
             }
         }
 
-    double sum_step_rewards = 0.0;
-    double sum_traj_returns = 0.0;
-    double sum_entropy = 0.0;
-    double sum_values = 0.0;
-    double sumsq_values = 0.0;
+        double sum_step_rewards = 0.0;
+        double sum_traj_returns = 0.0;
+        double sum_entropy = 0.0;
+        double sum_values = 0.0;
+        double sumsq_values = 0.0;
         int count_steps = total_traj * steps;
         for (int i = 0; i < total_traj; i++) {
             double ret = 0.0;
@@ -273,12 +273,17 @@ int main() {
 
         double* adv_flat = NULL;
         if (total_steps > 0) {
+            const double gamma = 0.90;
+            const double gae_lambda = 0.95;
             adv_flat = (double*)malloc(sizeof(double) * total_steps);
             int curG = 0;
             for (int b = 0; b < total_traj; b++) {
-                double* G = discountedPNL(flat[b]->rewards, 0.9, steps);
-                for (int t = 0; t < steps; t++) adv_flat[curG++] = G[t];
-                free(G);
+                double* A = malloc(sizeof(double) * steps);
+                double* R = malloc(sizeof(double) * steps);
+                compute_gae(flat[b]->rewards, flat[b]->values, steps, gamma, gae_lambda, A, R);
+                for (int t = 0; t < steps; t++) adv_flat[curG++] = A[t];
+                free(A);
+                free(R);
             }
             normPNL(adv_flat, total_steps);
         }

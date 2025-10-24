@@ -14,6 +14,15 @@
 double pnl(state s, state s_next);
 double* discountedPNL(double* rewards, double gamma, int steps);
 void normPNL(double* G, int n);
+void compute_gae(
+	const double* rewards,
+	const double* values,
+	int steps,
+	double gamma,
+	double gae_lambda,
+	double* out_advantages,
+	double* out_returns
+);
 bool stop();
 void reset_flags();
 

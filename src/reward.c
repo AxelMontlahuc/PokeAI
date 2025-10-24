@@ -91,3 +91,23 @@ void reset_flags() {
     OPP_HOUSE_FLAG = false;
     OPP_ROOM_FLAG = false;
 }
+
+void compute_gae(
+    const double* rewards,
+    const double* values,
+    int steps,
+    double gamma,
+    double gae_lambda,
+    double* out_advantages,
+    double* out_returns
+) {
+    double gae = 0.0;
+    for (int t = steps - 1; t >= 0; t--) {
+        double v_t = values[t];
+        double v_tp1 = (t + 1 < steps) ? values[t + 1] : 0.0;
+        double delta = rewards[t] + gamma * v_tp1 - v_t;
+        gae = delta + gamma * gae_lambda * gae;
+        out_advantages[t] = gae;
+        out_returns[t] = out_advantages[t] + v_t;
+    }
+}
