@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <assert.h>
 #include <time.h>
+#include <math.h>
+#include <float.h>
 #ifdef _WIN32
 #include <direct.h>
 #include <io.h>
@@ -65,6 +67,19 @@ static int cmp_double_asc(const void* a, const void* b) {
     double da = *(const double*)a;
     double db = *(const double*)b;
     return (da > db) - (da < db);
+}
+
+static int actionToIndex(MGBAButton action) {
+    switch (action) {
+        case MGBA_BUTTON_UP: return 0;
+        case MGBA_BUTTON_DOWN: return 1;
+        case MGBA_BUTTON_LEFT: return 2;
+        case MGBA_BUTTON_RIGHT: return 3;
+        case MGBA_BUTTON_A: return 4;
+        case MGBA_BUTTON_B: return 5;
+        case MGBA_BUTTON_START: return 6;
+        default: return 5;
+    }
 }
 
 int main() {
@@ -230,8 +245,19 @@ int main() {
         double rtP = (total_steps>0)? (100.0 * (double)action_counts[3]/(double)total_steps) : 0.0;
         double aP  = (total_steps>0)? (100.0 * (double)action_counts[4]/(double)total_steps) : 0.0;
         double bP  = (total_steps>0)? (100.0 * (double)action_counts[5]/(double)total_steps) : 0.0;
-        printf("  Actions   : Up=%5.1f%%  Down=%5.1f%%  Left=%5.1f%%  Right=%5.1f%%  A=%5.1f%%  B=%5.1f%%\n",
-            upP, dnP, lfP, rtP, aP, bP);
+        printf("  Actions   : Up=%5.1f%%  Down=%5.1f%%  Left=%5.1f%%  Right=%5.1f%%  A=%5.1f%%  B=%5.1f%%\n", upP, dnP, lfP, rtP, aP, bP);
+
+        double* adv_flat = NULL;
+        if (total_steps > 0) {
+            adv_flat = (double*)malloc(sizeof(double) * total_steps);
+            int curG = 0;
+            for (int b = 0; b < total_traj; b++) {
+                double* G = discountedPNL(flat[b]->rewards, 0.9, steps);
+                for (int t = 0; t < steps; t++) adv_flat[curG++] = G[t];
+                free(G);
+            }
+            normPNL(adv_flat, total_steps);
+        }
 
         BackpropStats st = {0};
         clock_t t0 = clock();
@@ -239,7 +265,98 @@ int main() {
         clock_t t1 = clock();
         double secs = (double)(t1 - t0) / (double)CLOCKS_PER_SEC;
         double sps = (secs > 0.0) ? ((double)total_steps / secs) : 0.0;
-        printf("  Gradients : ||g||_2=%-9.4f  clip=%-6.3f  time=%-6.3fs  steps/s=%-8.1f\n\n", st.grad_norm, st.clip_scale, secs, sps);
+        printf("  Gradients : ||g||_2=%-9.4f  clip=%-6.3f  time=%-6.3fs  steps/s=%-8.1f\n", st.grad_norm, st.clip_scale, secs, sps);
+
+        if (total_steps > 0) {
+            const double clip_eps = 0.20;
+            double kl_sum = 0.0;
+            double ratio_sum = 0.0;
+            double ratio_sq_sum = 0.0;
+            double ratio_min = DBL_MAX;
+            double ratio_max = -DBL_MAX;
+            long clip_count = 0;
+            double surr_sum = 0.0;
+
+            int flat_idx = 0;
+            for (int i = 0; i < total_traj; i++) {
+                for (int j = 0; j < network->hiddenSize; j++) {
+                    network->hiddenState[j] = 0.0;
+                    network->cellState[j] = 0.0;
+                }
+                for (int t = 0; t < steps; t++) {
+                    double* input_vec = convertState(flat[i]->states[t]);
+                    double* p_new = forward(network, input_vec, temperature);
+
+                    double* p_old = flat[i]->probs[t];
+
+                    double kl_t = 0.0;
+                    for (int k = 0; k < ACTION_COUNT; k++) {
+                        double po = p_old[k];
+                        if (po > 0.0) {
+                            double pn = fmax(p_new[k], 1e-12);
+                            kl_t += po * (log(po + 1e-12) - log(pn));
+                        }
+                    }
+                    kl_sum += kl_t;
+
+                    int aidx = actionToIndex(flat[i]->actions[t]);
+                    if (aidx >= 0 && aidx < ACTION_COUNT) {
+                        double po_a = fmax(p_old[aidx], 1e-12);
+                        double pn_a = fmax(p_new[aidx], 1e-12);
+                        double r = pn_a / po_a;
+                        ratio_sum += r;
+                        ratio_sq_sum += r * r;
+                        if (r < ratio_min) ratio_min = r;
+                        if (r > ratio_max) ratio_max = r;
+                        if (r < (1.0 - clip_eps) || r > (1.0 + clip_eps)) clip_count++;
+                        if (adv_flat) surr_sum += r * adv_flat[flat_idx];
+                    }
+
+                    flat_idx++;
+                    free(input_vec);
+                }
+            }
+
+            double mean_kl = kl_sum / (double)total_steps;
+            double mean_ratio = ratio_sum / (double)total_steps;
+            double var_ratio = (ratio_sq_sum / (double)total_steps) - (mean_ratio * mean_ratio);
+            if (var_ratio < 0.0) var_ratio = 0.0;
+            double std_ratio = sqrt(var_ratio);
+            double clip_frac = (double)clip_count / (double)total_steps;
+            double surrogate = (total_steps > 0) ? (surr_sum / (double)total_steps) : 0.0;
+
+            double adv_mean = 0.0, adv_var = 0.0, adv_min = 0.0, adv_max = 0.0;
+            if (adv_flat) {
+                adv_min = DBL_MAX; adv_max = -DBL_MAX; adv_mean = 0.0;
+                for (int i = 0; i < total_steps; i++) {
+                    double a = adv_flat[i];
+                    adv_mean += a;
+                    if (a < adv_min) adv_min = a;
+                    if (a > adv_max) adv_max = a;
+                }
+                adv_mean /= (double)total_steps;
+                for (int i = 0; i < total_steps; i++) {
+                    double d = adv_flat[i] - adv_mean;
+                    adv_var += d * d;
+                }
+                adv_var /= (double)total_steps;
+            }
+
+            printf("  PPO diag  : KL=%-8.6f  ratio mean=%-7.4f std=%-7.4f min=%-7.4f max=%-7.4f  clip@%.2f=%.3f\n",
+                   mean_kl, mean_ratio, std_ratio, ratio_min, ratio_max, clip_eps, clip_frac);
+            if (adv_flat) {
+                printf("             : surrogate(unclipped)=%-9.6f  adv mean=%-7.4f std=%-7.4f min=%-7.4f max=%-7.4f\n",
+                       surrogate, adv_mean, sqrt(adv_var), adv_min, adv_max);
+            } else {
+                printf("            : surrogate(unclipped)=n/a  adv= n/a\n");
+            }
+
+            printf("            : value_loss=n/a  explained_var=n/a\n\n");
+        } else {
+            printf("  PPO diag  : n/a (no steps)\n\n");
+        }
+
+        if (adv_flat) free(adv_flat);
 
         free(traj_returns);
 
