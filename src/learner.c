@@ -133,7 +133,6 @@ int main() {
 
         int* b_sizes = malloc(sizeof(int) * n);
         int* b_steps = malloc(sizeof(int) * n);
-        double* b_eps = malloc(sizeof(double) * n);
         double* b_temp = malloc(sizeof(double) * n);
 
         int total_traj = 0;
@@ -144,10 +143,9 @@ int main() {
 
             int batch_size = 0;
             int s = 0;
-            double eps = 0.0;
             double temp = 1.0;
 
-            if (read_batch_file(files[i], &batch, &batch_size, &s, &eps, &temp) != 0) {
+            if (read_batch_file(files[i], &batch, &batch_size, &s, &temp) != 0) {
                 fprintf(stderr, "[Learner] Failed to read %s\n", files[i]);
                 continue;
             }
@@ -155,7 +153,6 @@ int main() {
             batches[i] = batch;
             b_sizes[i] = batch_size;
             b_steps[i] = s;
-            b_eps[i] = eps;
             b_temp[i] = temp;
             total_traj += batch_size;
 
@@ -174,11 +171,9 @@ int main() {
             }
         }
 
-        double epsilon = 0.2;
         double temperature = 1.0;
         for (int i = 0; i < n; i++) {
             if (b_sizes[i] > 0) { 
-                epsilon = b_eps[i]; 
                 temperature = b_temp[i]; 
                 break; 
             }
@@ -212,8 +207,6 @@ int main() {
 
         int action_counts[ACTION_COUNT] = {0};
         
-        double behav_absdiff_sum = 0.0;
-        double uni = 1.0 / (double)ACTION_COUNT;
         for (int i = 0; i < total_traj; i++) {
             for (int t = 0; t < steps; t++) {
                 int idx;
@@ -227,14 +220,6 @@ int main() {
                     default: idx = 5; break;
                 }
                 action_counts[idx]++;
-
-                if (flat[i]->behav_probs && flat[i]->behav_probs[t] && flat[i]->probs && flat[i]->probs[t]) {
-                    for (int k = 0; k < ACTION_COUNT; k++) {
-                        double expected = (1.0 - epsilon) * flat[i]->probs[t][k] + epsilon * uni;
-                        double diff = fabs(flat[i]->behav_probs[t][k] - expected);
-                        behav_absdiff_sum += diff;
-                    }
-                }
             }
         }
 
@@ -251,7 +236,7 @@ int main() {
 
         int total_steps = total_traj * steps;
         printf("\n[Learner] Update\n");
-        printf("  Batch     : traj=%-4d steps=%-4d files=%-3d  eps=%-5.3f  temp=%-5.3f\n", total_traj, steps, n, epsilon, temperature);
+        printf("  Batch     : traj=%-4d steps=%-4d files=%-3d  temp=%-5.3f\n", total_traj, steps, n, temperature);
         printf("  Rewards   : avg/step=%-8.5f  avg/traj=%-8.5f  p10=%-8.5f  p50=%-8.5f  p90=%-8.5f\n", avg_step_reward, avg_traj_return, p10, p50, p90);
         printf("  Entropy   : H=%-7.4f (mean across steps)\n", avg_entropy);
         if (count_steps > 0) {
@@ -259,10 +244,7 @@ int main() {
             double var_v = fmax(0.0, (sumsq_values / (double)count_steps) - (mean_v * mean_v));
             printf("  Values    : mean=%-8.5f  std=%-8.5f\n", mean_v, sqrt(var_v));
         }
-        if (total_steps > 0) {
-            double behav_mean_absdiff = behav_absdiff_sum / (double)(total_steps * ACTION_COUNT);
-            printf("  EpsMix    : mean|b - mix(pi,eps)| = %-10.8f\n", behav_mean_absdiff);
-        }
+        
         double upP = (total_steps>0)? (100.0 * (double)action_counts[0]/(double)total_steps) : 0.0;
         double dnP = (total_steps>0)? (100.0 * (double)action_counts[1]/(double)total_steps) : 0.0;
         double lfP = (total_steps>0)? (100.0 * (double)action_counts[2]/(double)total_steps) : 0.0;
@@ -307,7 +289,7 @@ int main() {
                 int count = (s + mb_size <= total_traj) ? mb_size : (total_traj - s);
                 trajectory** mb = (trajectory**)malloc(sizeof(trajectory*) * count);
                 for (int m = 0; m < count; m++) mb[m] = flat[indices[s + m]];
-                backpropagation(network, 0.01, steps, mb, count, temperature, epsilon, &st);
+                backpropagation(network, 0.01, steps, mb, count, temperature, &st);
                 free(mb);
             }
         }
@@ -432,7 +414,6 @@ int main() {
         free(batches); 
         free(b_sizes); 
         free(b_steps); 
-        free(b_eps); 
         free(b_temp);
     }
 

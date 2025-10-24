@@ -161,7 +161,7 @@ static int actionToIndex(MGBAButton action) {
 }
 
 
-void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, double epsilon, BackpropStats* stats) {
+void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, BackpropStats* stats) {
     int H = network->hiddenSize;
     int I = network->inputSize;
     int Z = I + H;
@@ -343,8 +343,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             entropyBonus(probs_now, O, ENTROPY_COEFF, dlogits);
 
             double inv_temp = 1.0 / temperature;
-            double scale_eps = fmax(0.0, 1.0 - epsilon);
-            for (int k = 0; k < O; k++) dlogits[k] *= (inv_temp * scale_eps);
+            for (int k = 0; k < O; k++) dlogits[k] *= inv_temp;
 
             for (int j = 0; j < H; j++) dh[j] = dh_next[j];
             dL_dWout(network, dlogits, h[t], dWout, dBout, dh);

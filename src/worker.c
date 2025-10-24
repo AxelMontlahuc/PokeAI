@@ -45,7 +45,7 @@ static int chooseAction(double* p, int n) {
     return n - 1;
 }
 
-trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double temperature, double epsilon) {
+trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double temperature) {
     trajectory* traj = initTrajectory(steps);
     assert(traj != NULL);
 
@@ -64,15 +64,8 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         assert(traj->probs[i] != NULL);
         for (int k=0; k<ACTION_COUNT; k++) traj->probs[i][k] = probs[k];
         
-        double prob_eps[ACTION_COUNT];
-        double uni = 1.0 / (double)ACTION_COUNT;
-        for (int k=0; k<ACTION_COUNT; k++) prob_eps[k] = (1.0 - epsilon) * traj->probs[i][k] + epsilon * uni;
 
-        traj->behav_probs[i] = malloc(ACTION_COUNT * sizeof(double));
-        assert(traj->behav_probs[i] != NULL);
-        for (int k=0; k<ACTION_COUNT; k++) traj->behav_probs[i][k] = prob_eps[k];
-
-        traj->actions[i] =  ACTIONS[chooseAction(prob_eps, ACTION_COUNT)];
+        traj->actions[i] =  ACTIONS[chooseAction(traj->probs[i], ACTION_COUNT)];
         traj->values[i] = network->last_value;
 
         mgba_press_button(&conn, traj->actions[i], 50);
@@ -123,7 +116,6 @@ int main(int argc, char** argv) {
 
     int episode = (int)loaded_episodes;
     double temperature = 1.0;
-    double epsilon = 0.2;
 
     int file_seq = 0;
 
@@ -145,14 +137,13 @@ int main(int argc, char** argv) {
         mgba_reset(&conn);
 
         temperature = fmax(1.0, 3.0 * pow(0.97, (double)episode));
-        epsilon = fmax(0.02, 0.2 * pow(0.99, (double)episode));
 
         for (int t=0; t<trajectories; t += batch_size) {
             trajectory** batch = (trajectory**)malloc(batch_size * sizeof(trajectory*));
             assert(batch != NULL);
 
             for (int b=0; b<batch_size; b++) {
-                batch[b] = runTrajectory(conn, network, steps, temperature, epsilon);
+                batch[b] = runTrajectory(conn, network, steps, temperature);
             }
 
             char tmp_path[512], final_path[512];
@@ -164,7 +155,7 @@ int main(int argc, char** argv) {
             snprintf(final_path, sizeof(final_path), "%s/worker-%d-%06d.traj", queue_dir, port, file_seq);
 #endif
 
-            if (write_batch_file(tmp_path, final_path, batch, batch_size, steps, epsilon, temperature) != 0) {
+            if (write_batch_file(tmp_path, final_path, batch, batch_size, steps, temperature) != 0) {
                 fprintf(stderr, "[Worker] Failed to write %s\n", final_path);
             } else {
                 printf("[Worker] Enqueued %s\n", final_path);

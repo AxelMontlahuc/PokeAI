@@ -69,7 +69,6 @@ LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize) {
     network->Bout = calloc(network->outputSize, sizeof(double));
     assert(network->Bout != NULL);
 
-    // Value head parameters
     network->Wv = malloc(hiddenSize * sizeof(double));
     assert(network->Wv != NULL);
     for (int j = 0; j < hiddenSize; j++) network->Wv[j] = xavierInitialization(hiddenSize, 1);
@@ -123,7 +122,6 @@ LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize) {
     network->Bout_v = calloc(network->outputSize, sizeof(double));
     assert(network->Bout_m && network->Bout_v);
 
-    // Adam states for value head
     network->Wv_m = calloc(hiddenSize, sizeof(double));
     network->Wv_v = calloc(hiddenSize, sizeof(double));
     assert(network->Wv_m && network->Wv_v);
@@ -214,13 +212,11 @@ trajectory* initTrajectory(int steps) {
     traj->actions = malloc(steps * sizeof(MGBAButton));
     traj->rewards = malloc(steps * sizeof(double));
     traj->probs = malloc(steps * sizeof(double*));
-    traj->behav_probs = malloc(steps * sizeof(double*));
     traj->values = malloc(steps * sizeof(double));
-    assert(traj->states != NULL && traj->actions != NULL && traj->rewards != NULL && traj->probs != NULL && traj->behav_probs != NULL && traj->values != NULL);
+    assert(traj->states != NULL && traj->actions != NULL && traj->rewards != NULL && traj->probs != NULL && traj->values != NULL);
 
     for (int i=0; i<steps; i++) {
         traj->probs[i] = NULL;
-        traj->behav_probs[i] = NULL;
     }
 
     traj->steps = steps;
@@ -232,12 +228,10 @@ void freeTrajectory(trajectory* traj) {
     free(traj->states);
     for (int i=0; i<traj->steps; i++) {
         free(traj->probs[i]);
-        free(traj->behav_probs[i]);
     }
     free(traj->actions);
     free(traj->rewards);
     free(traj->probs);
-    free(traj->behav_probs);
     free(traj->values);
     free(traj);
 }

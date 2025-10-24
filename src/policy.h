@@ -24,7 +24,6 @@ void backpropagation(
 	trajectory** trajectories,
 	int batchCount,
 	double temperature,
-	double epsilon,
 	BackpropStats* stats
 );
 
