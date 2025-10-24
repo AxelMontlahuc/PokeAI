@@ -8,7 +8,6 @@
 #include <assert.h>
 
 #include "../mGBA-interface/include/mgba_controller.h"
-#include "../mGBA-interface/include/mgba_map.h"
 
 #define typeshit typedef
 

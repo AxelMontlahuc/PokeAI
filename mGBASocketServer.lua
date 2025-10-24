@@ -1,8 +1,6 @@
 -- ***********************
--- mGBA-http
--- Version: 0.3.0
--- Lua interface for mGBA-http
--- https://github.com/nikouu/mGBA-http
+-- mGBA Socket Server
+-- Original project: https://github.com/nikouu/mGBA-http
 -- ***********************
 
 local enableLogging = true
@@ -17,27 +15,103 @@ local nextID = 1
 local port = 8888
 
 function beginSocket()
-	while not server do
-		server, error = socket.bind(nil, port)
-		if error then
-			if error == socket.ERRORS.ADDRESS_IN_USE then
-				port = port + 1
-			else
-				console:error(formatMessage("Bind", error, true))
-				break
-			end
+	local maxAttempts = 100
+	local attempts = 0
+	local basePort = port
+
+	math.randomseed(os.time() + (emu and emu:currentFrame() or 0))
+
+	local function script_dir()
+		local info = debug.getinfo(1, 'S')
+		local src = info and info.source or ''
+		if src:sub(1,1) == '@' then
+			local path = src:sub(2)
+			local dir = path:match('^(.+)[/\\][^/\\]+$')
+			return dir or '.'
+		end
+		return '.'
+	end
+
+	local function path_join(a, b)
+		local sep = package.config:sub(1,1)
+		if a:sub(-1) == '/' or a:sub(-1) == '\\' then
+			return a .. b
+		end
+		return a .. sep .. b
+	end
+
+	local function ensure_dir(path)
+		local sep = package.config:sub(1,1)
+		if sep == '\\' then
+			os.execute('mkdir "' .. path .. '" >NUL 2>&1')
 		else
-			local ok
-			ok, error = server:listen()
-			if error then
-				server:close()
-				console:error(formatMessage("Listen", error, true))
+			os.execute('mkdir -p "' .. path .. '" >/dev/null 2>&1')
+		end
+	end
+
+	local lockBase = path_join(script_dir(), 'locks')
+	ensure_dir(lockBase)
+
+	local function try_lock(p)
+		local sep = package.config:sub(1,1)
+		local lockName = path_join(lockBase, string.format("port-%d.lock", p))
+		local tmpName = path_join(lockBase, string.format("port-%d-%d.tmp", p, math.random(1, 1e9)))
+		local f = io.open(tmpName, "w")
+		if not f then return false end
+		f:write("locked")
+		f:close()
+		local ok = os.rename(tmpName, lockName)
+				if not ok then
+			os.remove(tmpName)
+			return false
+		end
+		return true, lockName
+	end
+
+	local function release_lock(lock)
+		if lock then pcall(os.remove, lock) end
+	end
+
+	while attempts < maxAttempts do
+		local got, lockPath = try_lock(port)
+		if not got then
+			port = port + 1
+			attempts = attempts + 1
+		else
+			local s, err = socket.bind(nil, port)
+			if not s then
+				release_lock(lockPath)
+				local msg = tostring(err or "")
+				if (socket.ERRORS and err == socket.ERRORS.ADDRESS_IN_USE) or msg:lower():find("in use", 1, true) then
+					port = port + 1
+					attempts = attempts + 1
+				else
+					console:error(formatMessage("Bind", msg, true))
+					return
+				end
 			else
-				console:log("Socket Server: Listening on port " .. port)
-				server:add("received", socketAccept)
+				local ok, lerr = s:listen()
+				if not ok then
+					release_lock(lockPath)
+					local lmsg = tostring(lerr or "")
+					s:close()
+					if (socket.ERRORS and lerr == socket.ERRORS.ADDRESS_IN_USE) or lmsg:lower():find("in use", 1, true) then
+						port = port + 1
+						attempts = attempts + 1
+					else
+						console:error(formatMessage("Listen", lmsg, true))
+						return
+					end
+				else
+					server = s
+					console:log("Socket Server: Listening on port " .. port .. " (locks in '" .. lockBase .. "')")
+					server:add("received", socketAccept)
+					return
+				end
 			end
 		end
 	end
+	console:error("Socket Server: Failed to bind after " .. maxAttempts .. " attempts starting at port " .. basePort)
 end
 
 function socketAccept()
@@ -60,12 +134,9 @@ function socketReceived(id)
 	while true do
 		local message, error = sock:receive(1024)
 		if message then
-			-- it seems that the value must be non-empty in order to actually send back?
-			-- thus the ACK message default
 			local returnValue = messageRouter(message:match("^(.-)%s*$"))
 			sock:send(returnValue)
 		elseif error then
-			-- seems to go into this SOCKETERRORAGAIN state for each call, but it seems fine.
 			if error ~= socket.ERRORS.AGAIN then
 				formattedLog("socketReceived 4")
 				console:error(formatMessage(id, error, true))
@@ -126,8 +197,6 @@ function messageRouter(rawMessage)
 
 	local returnValue = defaultReturnValue;
 
-	-- formattedLog("messageRouter: \n\tRaw message:" .. rawMessage .. "\n\tmessageType: " .. (messageType or "") .. "\n\tmessageValue1: " .. (messageValue1 or "") .. "\n\tmessageValue2: " .. (messageValue2 or "") .. "\n\tmessageValue3: " .. (messageValue3 or ""))
-
 	if messageType == "mgba-http.button.tap" then manageButton(messageValue1)
 	elseif messageType == "mgba-http.button.hold" then manageButton(messageValue1, messageValue2)
 	elseif messageType == "memoryDomain.read8" then returnValue = emu.memory[messageValue1]:read8(tonumber(messageValue2))
@@ -142,13 +211,11 @@ function messageRouter(rawMessage)
 	end
 
 	returnValue = tostring(returnValue or defaultReturnValue);
-
-	-- formattedLog("Returning: " .. returnValue)
 	return returnValue;
 end
 
 -- ***********************
--- Button (Convenience abstraction)
+-- Button
 -- ***********************
 
 local keyEventQueue = {}
@@ -160,9 +227,8 @@ function manageButton(keyLetter, duration)
     local startFrame = emu:currentFrame()
     local endFrame = startFrame + duration + 1
 
-    -- Enqueue the key press and release event
     table.insert(keyEventQueue, {
-        keyMask = (1 << key), -- Convert key to bitmask
+        keyMask = (1 << key),
         startFrame = startFrame,
         endFrame = endFrame,
         pressed = false
@@ -224,7 +290,7 @@ local function readVRAM2048(addr)
 		local w = lo + hi*256
 		table.insert(words, w)
 	end
-	return words -- length 1024
+	return words
 end
 
 local function applyOffset32x32(words, xoff, yoff)

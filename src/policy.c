@@ -1,7 +1,7 @@
 #include "policy.h"
 #include "state.h"
 
-static const double ENTROPY_COEFF = 0.01;
+static const double ENTROPY_COEFF = 0.05;
 
 void entropyBonus(const double* probs, int O, double coeff, double* dlogits) {
     double mean_logp = 0.0;
@@ -101,14 +101,21 @@ double* forward(LSTM* network, double* data, double temperature) {
         network->logits[k] = s;
     }
 
+    int O = network->outputSize;
+    double maxlog = network->logits[0];
+    for (int k = 1; k < O; k++) {
+        if (network->logits[k] > maxlog) maxlog = network->logits[k];
+    }
+
     double sum = 0.0;
-    for (int k=0; k<network->outputSize; k++) {
-        network->probs[k] = exp(network->logits[k] / temperature);
-        sum += network->probs[k];
+    for (int k = 0; k < O; k++) {
+        double z = (network->logits[k] - maxlog) / temperature;
+        double e = exp(z);
+        network->probs[k] = e;
+        sum += e;
     }
-    for (int k=0; k<network->outputSize; k++) {
-        network->probs[k] /= sum;
-    }
+    double inv = 1.0 / (sum + 1e-12);
+    for (int k = 0; k < O; k++) network->probs[k] *= inv;
 
     free(combinedState);
     free(fArray);
@@ -147,7 +154,7 @@ static int actionToIndex(MGBAButton action) {
 }
 
 
-void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, double epsilon) {
+void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, double epsilon, BackpropStats* stats) {
     int H = network->hiddenSize;
     int I = network->inputSize;
     int Z = I + H;
@@ -202,7 +209,6 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     for (int b = 0; b < batchCount; b++) {
         trajectory* tr = trajectories[b];
         
-
         double** x = malloc(T * sizeof(double*));
         double** z = malloc(T * sizeof(double*));
         double** f = malloc(T * sizeof(double*));
@@ -365,6 +371,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             free(h[t]);
             free(cprev[t]);
         }
+
         free(x);
         free(z);
         free(f);
@@ -393,11 +400,15 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
         for (int k = 0; k < O; k++) dWout[j][k] *= invM; 
     }
     for (int j = 0; j < H; j++) { 
-        dBf[j] *= invM; dBi[j] *= invM; dBc[j] *= invM; dBo[j] *= invM; 
+        dBf[j] *= invM; 
+        dBi[j] *= invM; 
+        dBc[j] *= invM; 
+        dBo[j] *= invM; 
     }
     for (int k = 0; k < O; k++) dBout[k] *= invM;
 
-    double clip = 1.0; double norm2 = 0.0;
+    double clip = 1.0; 
+    double norm2 = 0.0;
     for (int a = 0; a < Z; a++) { 
         for (int j = 0; j < H; j++) { 
             norm2 += dWf[a][j]*dWf[a][j]; 
@@ -412,12 +423,17 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     for (int j = 0; j < H; j++) norm2 += dBf[j]*dBf[j] + dBi[j]*dBi[j] + dBc[j]*dBc[j] + dBo[j]*dBo[j];
     for (int k = 0; k < O; k++) norm2 += dBout[k]*dBout[k];
 
-    double norm = sqrt(norm2); double scale = (norm > clip) ? (clip / (norm + 1e-12)) : 1.0;
+    double norm = sqrt(norm2); 
+    double scale = (norm > clip) ? (clip / (norm + 1e-12)) : 1.0;
+    if (stats) {
+        stats->grad_norm = norm;
+        stats->clip_scale = scale;
+    }
 
     const double beta1 = 0.9;
     const double beta2 = 0.999;
     const double eps = 1e-8;
-    network->adam_t += 1ull;
+    network->adam_t += 1;
     double bc1 = 1.0 - pow(beta1, (double)network->adam_t);
     double bc2 = 1.0 - pow(beta2, (double)network->adam_t);
     double inv_bc1 = 1.0 / bc1;
@@ -497,6 +513,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
         vhat = network->Bo_v[j] * inv_bc2;
         network->Bo[j] += learningRate * (mhat / (sqrt(vhat) + eps));
     }
+
     for (int k = 0; k < O; k++) {
         double g = dBout[k] * scale;
         network->Bout_m[k] = beta1 * network->Bout_m[k] + (1.0 - beta1) * g;

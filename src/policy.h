@@ -11,7 +11,21 @@
 #include "func.h"
 #include "reward.h"
 
+typedef struct {
+	double grad_norm;
+	double clip_scale;
+} BackpropStats;
+
 double* forward(LSTM* network, double* data, double temperature);
-void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, double epsilon);
+void backpropagation(
+	LSTM* network,
+	double learningRate,
+	int steps,
+	trajectory** trajectories,
+	int batchCount,
+	double temperature,
+	double epsilon,
+	BackpropStats* stats
+);
 
 #endif
