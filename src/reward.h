@@ -8,11 +8,9 @@
 #include <math.h>
 
 #include "struct.h"
-
-#include "../mGBA-interface/include/mgba_intel.h"
+#include "constants.h"
 
 double pnl(state s, state s_next);
-double* discountedPNL(double* rewards, double gamma, int steps);
 void normPNL(double* G, int n);
 void compute_gae(
 	const double* rewards,
@@ -23,7 +21,6 @@ void compute_gae(
 	double* out_advantages,
 	double* out_returns
 );
-bool stop();
-void reset_flags();
+
 
 #endif

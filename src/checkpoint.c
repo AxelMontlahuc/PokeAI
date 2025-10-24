@@ -1,5 +1,4 @@
 #include "checkpoint.h"
-#include "constants.h"
 
 static int write_exact(FILE* f, const void* buf, size_t sz) {
     return fwrite(buf, 1, sz, f) == sz ? 0 : -1;
@@ -8,9 +7,6 @@ static int write_exact(FILE* f, const void* buf, size_t sz) {
 static int read_exact(FILE* f, void* buf, size_t sz) {
     return fread(buf, 1, sz, f) == sz ? 0 : -1;
 }
-
-/* Use centralized checkpoint identifiers */
-/* MAGIC and VERSION are now defined in constants.{h,c} as CKPT_MAGIC/CKPT_VERSION */
 
 int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_t rng_seed) {
     FILE* f = fopen(path, "wb");

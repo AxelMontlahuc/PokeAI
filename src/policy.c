@@ -6,11 +6,11 @@ void entropyBonus(const double* probs, int O, double coeff, double* dlogits) {
     double mean_logp = 0.0;
     for (int k = 0; k < O; k++) {
         double pk = probs[k];
-        mean_logp += pk * log(pk + 1e-12);
+        mean_logp += pk * log(pk + NUM_EPS);
     }
     for (int k = 0; k < O; k++) {
         double pk = probs[k];
-        double ent_grad = pk * (mean_logp - log(pk + 1e-12));
+        double ent_grad = pk * (mean_logp - log(pk + NUM_EPS));
         dlogits[k] += coeff * ent_grad;
     }
 }
@@ -117,7 +117,7 @@ double* forward(LSTM* network, double* data, double temperature) {
         network->probs[k] = e;
         sum += e;
     }
-    double inv = 1.0 / (sum + 1e-12);
+    double inv = 1.0 / (sum + NUM_EPS);
     for (int k = 0; k < O; k++) network->probs[k] *= inv;
 
     free(combinedState);
@@ -142,20 +142,6 @@ void dL_dWout(LSTM* network, double* dlogits, double* h_t, double** dWout, doubl
         dh_accum[j] += s;
     }
 }
-
-static int actionToIndex(MGBAButton action) {
-    switch (action) {
-        case MGBA_BUTTON_UP: return 0;
-        case MGBA_BUTTON_DOWN: return 1;
-        case MGBA_BUTTON_LEFT: return 2;
-        case MGBA_BUTTON_RIGHT: return 3;
-        case MGBA_BUTTON_A: return 4;
-        case MGBA_BUTTON_B: return 5;
-        case MGBA_BUTTON_START: return 6;
-        default: return 5;
-    }
-}
-
 
 void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, BackpropStats* stats) {
     int H = network->hiddenSize;
@@ -316,11 +302,11 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
                 probs_now[k] = e;
                 sum += e;
             }
-            double invsum = 1.0 / (sum + 1e-12);
+            double invsum = 1.0 / (sum + NUM_EPS);
             for (int k = 0; k < O; k++) probs_now[k] *= invsum;
 
-            double logp_new = log(probs_now[actionIndex] + 1e-12);
-            double logp_old = log(tr->probs[t][actionIndex] + 1e-12);
+            double logp_new = log(probs_now[actionIndex] + NUM_EPS);
+            double logp_old = log(tr->probs[t][actionIndex] + NUM_EPS);
             double ratio = exp(logp_new - logp_old);
             double A = As[b][t];
 
@@ -488,7 +474,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     for (int j = 0; j < H; j++) norm2 += dWv[j]*dWv[j];
     norm2 += dBv * dBv;
     double norm = sqrt(norm2); 
-    double scale = (norm > clip) ? (clip / (norm + 1e-12)) : 1.0;
+    double scale = (norm > clip) ? (clip / (norm + NUM_EPS)) : 1.0;
     if (stats) {
         stats->grad_norm = norm;
         stats->clip_scale = scale;

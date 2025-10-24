@@ -51,18 +51,6 @@ double pnl(state s, state s_next) {
     return pnl;
 }
 
-double* discountedPNL(double* rewards, double gamma, int steps) {
-    double* G = calloc(steps, sizeof(double));
-    assert(G != NULL);
-    
-    G[steps - 1] = rewards[steps - 1];
-    for (int t = steps - 2; t >= 0; t--) {
-        G[t] = rewards[t] + gamma * G[t+1];
-    }
-
-    return G;
-}
-
 void normPNL(double* G, int n) {
     double mean = 0.0;
     for (int i = 0; i < n; i++) mean += G[i];
@@ -74,22 +62,9 @@ void normPNL(double* G, int n) {
         var += d * d;
     }
     var /= (double)n;
-    double std = sqrt(var) + 1e-8;
+    double std = sqrt(var) + STD_EPS;
 
     for (int i = 0; i < n; i++) G[i] = (G[i] - mean) / std;
-}
-
-bool stop() {
-    return CLOCK_FLAG;
-}
-
-void reset_flags() {
-    HOUSE_FLAG = false;
-    ROOM_FLAG = false;
-    CLOCK_FLAG = false;
-    OUTDOOR_FLAG = false;
-    OPP_HOUSE_FLAG = false;
-    OPP_ROOM_FLAG = false;
 }
 
 void compute_gae(

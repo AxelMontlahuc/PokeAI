@@ -95,6 +95,19 @@ typeshit struct trajectory {
     int steps;
 } trajectory;
 
+static inline int actionToIndex(MGBAButton action) {
+    switch (action) {
+        case MGBA_BUTTON_UP: return 0;
+        case MGBA_BUTTON_DOWN: return 1;
+        case MGBA_BUTTON_LEFT: return 2;
+        case MGBA_BUTTON_RIGHT: return 3;
+        case MGBA_BUTTON_A: return 4;
+        case MGBA_BUTTON_B: return 5;
+        case MGBA_BUTTON_START: return 6;
+        default: return 5;
+    }
+}
+
 LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize);
 void freeLSTM(LSTM* network);
 trajectory* initTrajectory(int steps);

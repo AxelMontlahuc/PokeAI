@@ -43,6 +43,9 @@ double ADAM_BETA1 = 0.9;
 double ADAM_BETA2 = 0.999;
 double ADAM_EPS = 1e-8;
 
+double NUM_EPS = 1e-12;
+double STD_EPS = 1e-8;
+
 const uint32_t TRAJ_MAGIC = 0x30524A54u; // 'TRJ0'
 const uint16_t TRAJ_VERSION = 4;
 const char CKPT_MAGIC[8] = { 'L','S','T','M','S','A','V','\0' };

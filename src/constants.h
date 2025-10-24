@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-#include "constants.h"
-
 #define ACTION_COUNT 6
 extern const int INPUT_SIZE;
 extern const int HIDDEN_SIZE;
@@ -48,6 +46,9 @@ extern double GRAD_CLIP_NORM;
 extern double ADAM_BETA1;
 extern double ADAM_BETA2;
 extern double ADAM_EPS;
+
+extern double NUM_EPS;
+extern double STD_EPS;
 
 extern const uint32_t TRAJ_MAGIC;
 extern const uint16_t TRAJ_VERSION;

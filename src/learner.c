@@ -70,19 +70,6 @@ static int cmp_double_asc(const void* a, const void* b) {
     return (da > db) - (da < db);
 }
 
-static int actionToIndex(MGBAButton action) {
-    switch (action) {
-        case MGBA_BUTTON_UP: return 0;
-        case MGBA_BUTTON_DOWN: return 1;
-        case MGBA_BUTTON_LEFT: return 2;
-        case MGBA_BUTTON_RIGHT: return 3;
-        case MGBA_BUTTON_A: return 4;
-        case MGBA_BUTTON_B: return 5;
-        case MGBA_BUTTON_START: return 6;
-        default: return 5;
-    }
-}
-
 int main() {
     ensure_dir("checkpoints");
     ensure_dir(QUEUE_DIR);
@@ -202,17 +189,8 @@ int main() {
         
         for (int i = 0; i < total_traj; i++) {
             for (int t = 0; t < steps; t++) {
-                int idx;
-                switch (flat[i]->actions[t]) {
-                    case MGBA_BUTTON_UP: idx = 0; break;
-                    case MGBA_BUTTON_DOWN: idx = 1; break;
-                    case MGBA_BUTTON_LEFT: idx = 2; break;
-                    case MGBA_BUTTON_RIGHT: idx = 3; break;
-                    case MGBA_BUTTON_A: idx = 4; break;
-                    case MGBA_BUTTON_B: idx = 5; break;
-                    default: idx = 5; break;
-                }
-                action_counts[idx]++;
+                int idx = actionToIndex(flat[i]->actions[t]);
+                if (idx >= 0 && idx < ACTION_COUNT) action_counts[idx]++;
             }
         }
 
@@ -321,16 +299,16 @@ int main() {
                     for (int k = 0; k < ACTION_COUNT; k++) {
                         double po = p_old[k];
                         if (po > 0.0) {
-                            double pn = fmax(p_new[k], 1e-12);
-                            kl_t += po * (log(po + 1e-12) - log(pn));
+                            double pn = fmax(p_new[k], NUM_EPS);
+                            kl_t += po * (log(po + NUM_EPS) - log(pn));
                         }
                     }
                     kl_sum += kl_t;
 
                     int aidx = actionToIndex(flat[i]->actions[t]);
                     if (aidx >= 0 && aidx < ACTION_COUNT) {
-                        double po_a = fmax(p_old[aidx], 1e-12);
-                        double pn_a = fmax(p_new[aidx], 1e-12);
+                        double po_a = fmax(p_old[aidx], NUM_EPS);
+                        double pn_a = fmax(p_new[aidx], NUM_EPS);
                         double r = pn_a / po_a;
                         ratio_sum += r;
                         ratio_sq_sum += r * r;
