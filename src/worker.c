@@ -16,6 +16,7 @@
 #include "state.h"
 #include "reward.h"
 #include "policy.h"
+#include "constants.h"
 #include "checkpoint.h"
 #include "serializer.h"
 
@@ -68,7 +69,7 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         traj->actions[i] =  ACTIONS[chooseAction(traj->probs[i], ACTION_COUNT)];
         traj->values[i] = network->last_value;
 
-        mgba_press_button(&conn, traj->actions[i], 50);
+        mgba_press_button(&conn, traj->actions[i], BUTTON_PRESS_MS);
 
         state s_next = fetchState(conn);
         traj->rewards[i] = pnl(traj->states[i], s_next);
@@ -80,49 +81,40 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
 }
 
 int main(int argc, char** argv) {
-    const char* host = "127.0.0.1";
-    int port = 8888;
-    const char* queue_dir = "queue";
-    const char* checkpoint_path = "checkpoints/model-last.sav";
-
-    if (argc >= 2) port = atoi(argv[1]);
+    if (argc >= 2) PORT = atoi(argv[1]);
 
     ensure_dir("checkpoints");
-    ensure_dir(queue_dir);
+    ensure_dir(QUEUE_DIR);
 
     MGBAConnection conn;
-    if (mgba_connect(&conn, host, port) == 0) {
-        printf("[Worker] Connected to mGBA %s:%d\n", host, port);
+    if (mgba_connect(&conn, HOST_ADDR, PORT) == 0) {
+        printf("[Worker] Connected to mGBA %s:%d\n", HOST_ADDR, PORT);
     } else {
-        printf("[Worker] Failed to connect mGBA %s:%d\n", host, port);
+        printf("[Worker] Failed to connect mGBA %s:%d\n", HOST_ADDR, PORT);
         return 1;
     }
 
     unsigned int seed = (unsigned int)time(NULL);
     srand(seed);
 
-    int inputSize = 6*8 + 4 + 3 + 2 + 2*32*32;
-    int hiddenSize = 128;
+    int inputSize = INPUT_SIZE;
+    int hiddenSize = HIDDEN_SIZE;
 
     uint64_t loaded_episodes = 0ULL;
     uint64_t loaded_seed = 0ULL;
 
-    LSTM* network = loadLSTM(checkpoint_path, &loaded_episodes, &loaded_seed);
+    LSTM* network = loadLSTM(CHECKPOINT_PATH, &loaded_episodes, &loaded_seed);
     if (!network) network = initLSTM(inputSize, hiddenSize, ACTION_COUNT);
-    
-    int trajectories = 32;
-    int steps = 64;
-    int batch_size = 8;
 
     int episode = (int)loaded_episodes;
-    double temperature = 1.0;
+    double temperature = TEMP_MIN;
 
     int file_seq = 0;
 
     while (1) {
         uint64_t ep_tmp = 0ULL;
         uint64_t seed_tmp = 0ULL;
-        LSTM* reloaded = loadLSTM(checkpoint_path, &ep_tmp, &seed_tmp);
+        LSTM* reloaded = loadLSTM(CHECKPOINT_PATH, &ep_tmp, &seed_tmp);
         if (reloaded) {
             if (network) freeLSTM(network);
             network = reloaded;
@@ -136,33 +128,33 @@ int main(int argc, char** argv) {
 
         mgba_reset(&conn);
 
-        temperature = fmax(1.0, 3.0 * pow(0.97, (double)episode));
+        temperature = fmax(TEMP_MIN, TEMP_MAX * pow(TEMP_DECAY, (double)episode));
 
-        for (int t=0; t<trajectories; t += batch_size) {
-            trajectory** batch = (trajectory**)malloc(batch_size * sizeof(trajectory*));
+        for (int t=0; t<WORKER_TRAJECTORIES; t += WORKER_BATCH_SIZE) {
+            trajectory** batch = (trajectory**)malloc(WORKER_BATCH_SIZE * sizeof(trajectory*));
             assert(batch != NULL);
 
-            for (int b=0; b<batch_size; b++) {
-                batch[b] = runTrajectory(conn, network, steps, temperature);
+            for (int b=0; b<WORKER_BATCH_SIZE; b++) {
+                batch[b] = runTrajectory(conn, network, WORKER_STEPS, temperature);
             }
 
             char tmp_path[512], final_path[512];
 #ifdef _WIN32
-            snprintf(tmp_path, sizeof(tmp_path), "%s\\worker-%d-%06d.traj.tmp", queue_dir, port, file_seq);
-            snprintf(final_path, sizeof(final_path), "%s\\worker-%d-%06d.traj", queue_dir, port, file_seq);
+            snprintf(tmp_path, sizeof(tmp_path), "%s\\worker-%d-%06d.traj.tmp", QUEUE_DIR, PORT, file_seq);
+            snprintf(final_path, sizeof(final_path), "%s\\worker-%d-%06d.traj", QUEUE_DIR, PORT, file_seq);
 #else
-            snprintf(tmp_path, sizeof(tmp_path), "%s/worker-%d-%06d.traj.tmp", queue_dir, port, file_seq);
-            snprintf(final_path, sizeof(final_path), "%s/worker-%d-%06d.traj", queue_dir, port, file_seq);
+            snprintf(tmp_path, sizeof(tmp_path), "%s/worker-%d-%06d.traj.tmp", QUEUE_DIR, PORT, file_seq);
+            snprintf(final_path, sizeof(final_path), "%s/worker-%d-%06d.traj", QUEUE_DIR, PORT, file_seq);
 #endif
 
-            if (write_batch_file(tmp_path, final_path, batch, batch_size, steps, temperature) != 0) {
+            if (write_batch_file(tmp_path, final_path, batch, WORKER_BATCH_SIZE, WORKER_STEPS, temperature) != 0) {
                 fprintf(stderr, "[Worker] Failed to write %s\n", final_path);
             } else {
                 printf("[Worker] Enqueued %s\n", final_path);
             }
             file_seq++;
 
-            for (int b=0; b<batch_size; b++) freeTrajectory(batch[b]);
+            for (int b=0; b<WORKER_BATCH_SIZE; b++) freeTrajectory(batch[b]);
             free(batch);
         }
 

@@ -22,6 +22,7 @@
 #include "policy.h"
 #include "checkpoint.h"
 #include "serializer.h"
+#include "constants.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -83,33 +84,28 @@ static int actionToIndex(MGBAButton action) {
 }
 
 int main() {
-    const char* queue_dir = "queue";
-    const char* checkpoint_path = "checkpoints/model-last.sav";
-    const char* locks_dir = "locks";
-    int files_per_step = 4;
-
     ensure_dir("checkpoints");
-    ensure_dir(queue_dir);
+    ensure_dir(QUEUE_DIR);
 
 #ifdef _WIN32
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "cmd /C rmdir /S /Q \"%s\" >NUL 2>&1 & mkdir \"%s\" >NUL 2>&1", queue_dir, queue_dir);
+    snprintf(cmd, sizeof(cmd), "cmd /C rmdir /S /Q \"%s\" >NUL 2>&1 & mkdir \"%s\" >NUL 2>&1", QUEUE_DIR, QUEUE_DIR);
     system(cmd);
-    snprintf(cmd, sizeof(cmd), "cmd /C rmdir /S /Q \"%s\" >NUL 2>&1 & mkdir \"%s\" >NUL 2>&1", locks_dir, locks_dir);
+    snprintf(cmd, sizeof(cmd), "cmd /C rmdir /S /Q \"%s\" >NUL 2>&1 & mkdir \"%s\" >NUL 2>&1", LOCKS_DIR, LOCKS_DIR);
     system(cmd);
 #else
     char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "rm -rf \"%s\" \"%s\"; mkdir -p \"%s\" \"%s\"", queue_dir, locks_dir, queue_dir, locks_dir);
+    snprintf(cmd, sizeof(cmd), "rm -rf \"%s\" \"%s\"; mkdir -p \"%s\" \"%s\"", QUEUE_DIR, LOCKS_DIR, QUEUE_DIR, LOCKS_DIR);
     system(cmd);
 #endif
 
-    int inputSize = 6*8 + 4 + 3 + 2 + 2*32*32;
-    int hiddenSize = 128;
+    int inputSize = INPUT_SIZE;
+    int hiddenSize = HIDDEN_SIZE;
 
     uint64_t loaded_episodes = 0ULL;
     uint64_t loaded_seed = 0ULL;
 
-    LSTM* network = loadLSTM(checkpoint_path, &loaded_episodes, &loaded_seed);
+    LSTM* network = loadLSTM(CHECKPOINT_PATH, &loaded_episodes, &loaded_seed);
     if (!network) network = initLSTM(inputSize, hiddenSize, ACTION_COUNT);
 
     unsigned int seed = (unsigned int)((loaded_seed != 0) ? (unsigned int)loaded_seed : (unsigned int)time(NULL));
@@ -119,7 +115,7 @@ int main() {
 
     while (1) {
         char files[64][512];
-        int n = list_traj_files(queue_dir, files, files_per_step);
+    int n = list_traj_files(QUEUE_DIR, files, FILES_PER_STEP);
         if (n == 0) {
 #ifdef _WIN32
             Sleep(50);
@@ -256,8 +252,9 @@ int main() {
         double* adv_flat = NULL;
         double** A_per_traj = NULL;
         double** R_per_traj = NULL;
-        const double gamma = 0.90;
-        const double gae_lambda = 0.95;
+        const double gamma = GAMMA_DISCOUNT;
+        const double gae_lambda = GAE_LAMBDA;
+
         if (total_steps > 0) {
             A_per_traj = malloc(sizeof(double*) * total_traj);
             R_per_traj = malloc(sizeof(double*) * total_traj);
@@ -274,12 +271,9 @@ int main() {
             normPNL(adv_flat, total_steps);
         }
 
-        int ppo_epochs = 3;
-        double base_lr = 0.010;
-        double decay = 0.99;
-        double warmup = (episode <= 5) ? (fmax(0.1, (double)episode / 5.0)) : 1.0;
-        double lr = base_lr * pow(decay, (double)episode) * warmup;
-        int mb_size = (total_traj >= 8) ? 4 : total_traj;
+        double warmup = (episode <= WARMUP_EPISODES) ? (fmax(MIN_WARMUP_FACTOR, (double)episode / (double)WARMUP_EPISODES)) : 1.0;
+        double lr = BASE_LR * pow(LR_DECAY, (double)episode) * warmup;
+        int mb_size = (total_traj >= MB_TRAJ_THRESHOLD) ? MB_SIZE_DEFAULT : total_traj;
 
         int* indices = (int*)malloc(sizeof(int) * total_traj);
         for (int i = 0; i < total_traj; i++) indices[i] = i;
@@ -287,7 +281,7 @@ int main() {
         BackpropStats st = {0};
         clock_t t0 = clock();
 
-        for (int e = 0; e < ppo_epochs; e++) {
+        for (int e = 0; e < PPO_EPOCHS; e++) {
             for (int i = total_traj - 1; i > 0; --i) {
                 int j = rand() % (i + 1);
                 int tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
@@ -302,12 +296,12 @@ int main() {
         }
         clock_t t1 = clock();
         double secs = (double)(t1 - t0) / (double)CLOCKS_PER_SEC;
-        double sps = (secs > 0.0) ? ((double)(total_steps * ppo_epochs) / secs) : 0.0;
+        double sps = (secs > 0.0) ? ((double)(total_steps * PPO_EPOCHS) / secs) : 0.0;
         printf("  Gradients : ||g||_2=%-9.4f  clip=%-6.3f  lr=%-7.5f  time=%-6.3fs  steps/s=%-8.1f\n", st.grad_norm, st.clip_scale, lr, secs, sps);
         free(indices);
 
         if (total_steps > 0) {
-            const double clip_eps = 0.20;
+            const double clip_eps = CLIP_EPS;
             double kl_sum = 0.0;
             double ratio_sum = 0.0;
             double ratio_sq_sum = 0.0;
@@ -408,7 +402,7 @@ int main() {
         free(traj_returns);
 
         episode++;
-        saveLSTMCheckpoint(checkpoint_path, network, (uint64_t)episode, (uint64_t)seed);
+        saveLSTMCheckpoint(CHECKPOINT_PATH, network, (uint64_t)episode, (uint64_t)seed);
 
         for (int i = 0; i < total_traj; i++) freeTrajectory(flat[i]);
         free(flat);

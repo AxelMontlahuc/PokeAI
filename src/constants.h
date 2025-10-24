@@ -1,0 +1,41 @@
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
+
+#include <stdint.h>
+
+#define ACTION_COUNT 6
+extern const int INPUT_SIZE;
+extern const int HIDDEN_SIZE;
+
+extern const char* const HOST_ADDR;
+extern int PORT;
+
+extern const char* const QUEUE_DIR;
+extern const char* const LOCKS_DIR;
+extern const char* const CHECKPOINT_PATH;
+
+extern int WORKER_TRAJECTORIES;
+extern int WORKER_STEPS;
+extern int WORKER_BATCH_SIZE;
+extern int BUTTON_PRESS_MS;
+
+extern double TEMP_MAX;
+extern double TEMP_MIN;
+extern double TEMP_DECAY;
+
+extern int FILES_PER_STEP;
+
+extern int PPO_EPOCHS;
+extern double BASE_LR;
+extern double LR_DECAY;
+extern int WARMUP_EPISODES;
+extern double MIN_WARMUP_FACTOR;
+extern int MB_TRAJ_THRESHOLD;
+extern int MB_SIZE_DEFAULT;
+extern double CLIP_EPS;
+extern double TARGET_KL;
+
+extern double GAMMA_DISCOUNT;
+extern double GAE_LAMBDA;
+
+#endif

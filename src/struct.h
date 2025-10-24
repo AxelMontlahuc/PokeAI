@@ -8,10 +8,9 @@
 #include <assert.h>
 
 #include "../mGBA-interface/include/mgba_controller.h"
+#include "constants.h"
 
 #define typeshit typedef
-
-#define ACTION_COUNT 6
 
 typeshit struct pokemon {
     int maxHP;
