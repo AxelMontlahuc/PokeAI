@@ -154,7 +154,7 @@ static int actionToIndex(MGBAButton action) {
 }
 
 
-void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, double epsilon) {
+void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batchCount, double temperature, double epsilon, BackpropStats* stats) {
     int H = network->hiddenSize;
     int I = network->inputSize;
     int Z = I + H;
@@ -425,6 +425,10 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
 
     double norm = sqrt(norm2); 
     double scale = (norm > clip) ? (clip / (norm + 1e-12)) : 1.0;
+    if (stats) {
+        stats->grad_norm = norm;
+        stats->clip_scale = scale;
+    }
 
     const double beta1 = 0.9;
     const double beta2 = 0.999;

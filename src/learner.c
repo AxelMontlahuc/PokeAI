@@ -61,13 +61,32 @@ static int list_traj_files(const char* dir, char files[][512], int maxn) {
     return n;
 }
 
+static int cmp_double_asc(const void* a, const void* b) {
+    double da = *(const double*)a;
+    double db = *(const double*)b;
+    return (da > db) - (da < db);
+}
+
 int main() {
     const char* queue_dir = "queue";
     const char* checkpoint_path = "checkpoints/model-last.sav";
+    const char* locks_dir = "locks";
     int files_per_step = 4;
 
     ensure_dir("checkpoints");
     ensure_dir(queue_dir);
+
+#ifdef _WIN32
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "cmd /C rmdir /S /Q \"%s\" >NUL 2>&1 & mkdir \"%s\" >NUL 2>&1", queue_dir, queue_dir);
+    system(cmd);
+    snprintf(cmd, sizeof(cmd), "cmd /C rmdir /S /Q \"%s\" >NUL 2>&1 & mkdir \"%s\" >NUL 2>&1", locks_dir, locks_dir);
+    system(cmd);
+#else
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "rm -rf \"%s\" \"%s\"; mkdir -p \"%s\" \"%s\"", queue_dir, locks_dir, queue_dir, locks_dir);
+    system(cmd);
+#endif
 
     int inputSize = 6*8 + 4 + 3 + 2 + 2*32*32;
     int hiddenSize = 128;
@@ -150,14 +169,82 @@ int main() {
             }
         }
 
-        printf("[Learner] Training on %d traj (steps=%d) from %d files\n", total_traj, steps, n);
+        double sum_step_rewards = 0.0;
+        double sum_traj_returns = 0.0;
+        double sum_entropy = 0.0;
+        int count_steps = total_traj * steps;
+        for (int i = 0; i < total_traj; i++) {
+            double ret = 0.0;
+            for (int t = 0; t < steps; t++) {
+                ret += flat[i]->rewards[t];
+                double H = 0.0;
+                for (int k = 0; k < ACTION_COUNT; k++) {
+                    double p = flat[i]->probs[t][k];
+                    if (p > 0.0) H -= p * log(p);
+                }
+                sum_entropy += H;
+            }
+            sum_traj_returns += ret;
+            sum_step_rewards += ret;
+        }
+        double avg_entropy = (count_steps > 0) ? (sum_entropy / (double)count_steps) : 0.0;
+        double avg_traj_return = (total_traj > 0) ? (sum_traj_returns / (double)total_traj) : 0.0;
+        double avg_step_reward = (count_steps > 0) ? (sum_step_rewards / (double)count_steps) : 0.0;
 
-        backpropagation(network, 0.01, steps, flat, total_traj, temperature, epsilon);
+        int action_counts[ACTION_COUNT] = {0};
+        for (int i = 0; i < total_traj; i++) {
+            for (int t = 0; t < steps; t++) {
+                int idx;
+                switch (flat[i]->actions[t]) {
+                    case MGBA_BUTTON_UP: idx = 0; break;
+                    case MGBA_BUTTON_DOWN: idx = 1; break;
+                    case MGBA_BUTTON_LEFT: idx = 2; break;
+                    case MGBA_BUTTON_RIGHT: idx = 3; break;
+                    case MGBA_BUTTON_A: idx = 4; break;
+                    case MGBA_BUTTON_B: idx = 5; break;
+                    default: idx = 5; break;
+                }
+                action_counts[idx]++;
+            }
+        }
+
+        double* traj_returns = malloc(sizeof(double) * total_traj);
+        for (int i = 0; i < total_traj; i++) {
+            double rsum = 0.0;
+            for (int t = 0; t < steps; t++) rsum += flat[i]->rewards[t];
+            traj_returns[i] = rsum;
+        }
+        qsort(traj_returns, total_traj, sizeof(double), cmp_double_asc);
+        double p10 = traj_returns[(int)(0.10 * (total_traj - 1))];
+        double p50 = traj_returns[(int)(0.50 * (total_traj - 1))];
+        double p90 = traj_returns[(int)(0.90 * (total_traj - 1))];
+
+        int total_steps = total_traj * steps;
+        printf("\n[Learner] Update\n");
+        printf("  Batch     : traj=%-4d steps=%-4d files=%-3d  eps=%-5.3f  temp=%-5.3f\n", total_traj, steps, n, epsilon, temperature);
+        printf("  Rewards   : avg/step=%-8.5f  avg/traj=%-8.5f  p10=%-8.5f  p50=%-8.5f  p90=%-8.5f\n", avg_step_reward, avg_traj_return, p10, p50, p90);
+        printf("  Entropy   : H=%-7.4f (mean across steps)\n", avg_entropy);
+        double upP = (total_steps>0)? (100.0 * (double)action_counts[0]/(double)total_steps) : 0.0;
+        double dnP = (total_steps>0)? (100.0 * (double)action_counts[1]/(double)total_steps) : 0.0;
+        double lfP = (total_steps>0)? (100.0 * (double)action_counts[2]/(double)total_steps) : 0.0;
+        double rtP = (total_steps>0)? (100.0 * (double)action_counts[3]/(double)total_steps) : 0.0;
+        double aP  = (total_steps>0)? (100.0 * (double)action_counts[4]/(double)total_steps) : 0.0;
+        double bP  = (total_steps>0)? (100.0 * (double)action_counts[5]/(double)total_steps) : 0.0;
+        printf("  Actions   : Up=%5.1f%%  Down=%5.1f%%  Left=%5.1f%%  Right=%5.1f%%  A=%5.1f%%  B=%5.1f%%\n",
+            upP, dnP, lfP, rtP, aP, bP);
+
+        BackpropStats st = {0};
+        clock_t t0 = clock();
+        backpropagation(network, 0.01, steps, flat, total_traj, temperature, epsilon, &st);
+        clock_t t1 = clock();
+        double secs = (double)(t1 - t0) / (double)CLOCKS_PER_SEC;
+        double sps = (secs > 0.0) ? ((double)total_steps / secs) : 0.0;
+        printf("  Gradients : ||g||_2=%-9.4f  clip=%-6.3f  time=%-6.3fs  steps/s=%-8.1f\n\n", st.grad_norm, st.clip_scale, secs, sps);
+
+        free(traj_returns);
 
         episode++;
-        if (saveLSTMCheckpoint(checkpoint_path, network, (uint64_t)episode, (uint64_t)seed) == 0) {
-            printf("[Learner] Saved checkpoint (episode=%d)\n", episode);
-        }
+        saveLSTMCheckpoint(checkpoint_path, network, (uint64_t)episode, (uint64_t)seed);
 
         for (int i = 0; i < total_traj; i++) freeTrajectory(flat[i]);
         free(flat);
