@@ -275,11 +275,18 @@ int main() {
         }
 
         int ppo_epochs = 3;
-        int mb_size = (total_traj >= 8) ? 4 : total_traj; // full-trajectory minibatches
+        double base_lr = 0.010;
+        double decay = 0.99;
+        double warmup = (episode <= 5) ? (fmax(0.1, (double)episode / 5.0)) : 1.0;
+        double lr = base_lr * pow(decay, (double)episode) * warmup;
+        int mb_size = (total_traj >= 8) ? 4 : total_traj;
+
         int* indices = (int*)malloc(sizeof(int) * total_traj);
         for (int i = 0; i < total_traj; i++) indices[i] = i;
+
         BackpropStats st = {0};
         clock_t t0 = clock();
+
         for (int e = 0; e < ppo_epochs; e++) {
             for (int i = total_traj - 1; i > 0; --i) {
                 int j = rand() % (i + 1);
@@ -289,14 +296,14 @@ int main() {
                 int count = (s + mb_size <= total_traj) ? mb_size : (total_traj - s);
                 trajectory** mb = (trajectory**)malloc(sizeof(trajectory*) * count);
                 for (int m = 0; m < count; m++) mb[m] = flat[indices[s + m]];
-                backpropagation(network, 0.01, steps, mb, count, temperature, &st);
+                backpropagation(network, lr, steps, mb, count, temperature, &st);
                 free(mb);
             }
         }
         clock_t t1 = clock();
         double secs = (double)(t1 - t0) / (double)CLOCKS_PER_SEC;
         double sps = (secs > 0.0) ? ((double)(total_steps * ppo_epochs) / secs) : 0.0;
-        printf("  Gradients : ||g||_2=%-9.4f  clip=%-6.3f  time=%-6.3fs  steps/s=%-8.1f\n", st.grad_norm, st.clip_scale, secs, sps);
+        printf("  Gradients : ||g||_2=%-9.4f  clip=%-6.3f  lr=%-7.5f  time=%-6.3fs  steps/s=%-8.1f\n", st.grad_norm, st.clip_scale, lr, secs, sps);
         free(indices);
 
         if (total_steps > 0) {
