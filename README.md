@@ -5,7 +5,7 @@ Le but de ce TIPE est de créer un réseau de neurones capable de jouer à Poké
 
 Pour cela nous utilisons mGBA comme émulateur et grâce à la librairie winsock/socket (seules librairies non-standard utilisées) nous communiquons avec un script Lua dans mGBA pour récupérer l'état du jeu et envoyer des commandes.
 
-Quand à l'agent, c'est un VPG (Vanilla Policy Gradient) utilisant pour politique un LSTM (Long Short-Term Memory), mettant en évidence les cycles et boucles.
+L'agent utilise commme algorithme le PPO (Proximal Policy Optimization) avec un LSTM (Long Short-Term Memory) comme politique, mettant en évidence les cycles et boucles.
 
 # Utilisation
 1. Cloner le dépôt :
@@ -40,35 +40,39 @@ où `88XX` est le port sur lequel l'instance de mGBA écoute (pour le premier ag
   - `state` : Fonctions liées à l'état du jeu. 
   - `checkpoint.c` : Sauvegarde et restauration du modèle complet. 
   - `func` : Fonctions auxiliaires. 
+- `bin` : Dossier des exécutables.
+- `build` : Dossier des fichiers objets compilés.
+- `ROM` : Dossier où placer la ROM de Pokémon Emeraude et éventuellement des savestates (sauvegardes).
+- `checkpoints` : Dossier où seront sauvegardés les checkpoints (sauvegardes du modèle).
+- `locks` : Dossier où seront placés de fichiers `.lock` pour éviter que plusieurs agents n'utilisent le même port.
+- `queue` : Dossier où seront placés les fichiers `.traj` représentant des trajectoires collectées par les agents et à utiliser pour l'apprentissage.
 
 # Documentation
 Nous allons ici rentrer un peu plus en détail sur l'implémentation et les mathématiques derrière l'agent en détaillant chaque caractéristique du modèle. \
 Voici le plan des caractéristiques que nous allons détailler :
 
-1. Vanilla Policy Gradient
+1. Proximal Policy Optimization
 2. LSTM
 3. Softmax Temperature
-4. Epsilon-greedy
-5. Bonus d'entropie
-6. Normalisation
-7. Adam
+4. Bonus d'entropie
+5. Normalisation
+6. Adam
 
-## Vanilla Policy Gradient
-Voici le pseudo-code du VPG (aussi connu sous le nom REINFORCE) un petit peu modifié selon nos besoins : 
-> _Entrée_ : Vecteur $\theta_0$ représentant les paramètres initiaux de la politique notée $\pi_\theta$.
-> 1. pour chaque trajectoire $\tau_i = (s_0, a_0, \ldots, s_T, a_T)$ selon $\pi_\theta$ faire
-> 2. $\quad$ Calculer la récompense de la trajectoire (rééquilibrée) : 
-> $$G(\tau) = \sum_{t=0}^{T-1} \gamma^t R(s_t, a_t)$$
-> 3. $\quad$ Calculer le gradient de la politique par méthode de Monte-Carlo : 
-> $$\nabla_\theta\mathbb E_{\pi_\theta} G(\tau) = \frac 1 L \sum_\tau\sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t\mid s_t) G(\tau)$$
-> $\quad\quad\quad\space\space$ avec $L$ le nombre de trajectoires utilisées lors du calcul \
-> $\quad\space\space$ 4. $\quad$ Mettre à jour $\theta$ par montée du gradient avec un taux d'apprentissage $\eta$ : 
-> $$\theta \leftarrow \theta + \eta \nabla_\theta\mathbb E_{\pi_\theta} G(\tau)$$
-> 5. fin du pour
+## Proximal Policy Optimization
+Le Proximal Policy Optimization (PPO) est un algorithme d'apprentissage par renforcement (RL) qui améliore la stabilité et l'efficacité de l'entraînement par rapport à ses prédecesseurs (comme le VPG). \
+L'idée derrière le PPO est de limiter la mise à jour de la politique (la mise à jour dans la montée de gradient) pour éviter des changements trop brusques qui pourraient dégrader les performances de l'agent. Si cela ne paraît pas être un grand changement, c'est en fait extrêmement efficace en pratique.
 
-En pratique on réalise en fait une version un petit peu plus efficace du VPG à l'aide de _batching_ : on collecte un _batch_ de trajectoires et on applique ce même algorithme au batch tout entier (les seules différences sont qu'on normalise en fonction du batch entier et que $L$ vaut le cardinal du batch et non $1$). 
-
-Cela se traduit donc dans le code par les deux boucles ``for`` dans ``main()`` à la place d'une seule. 
+Voici le pseudo-code de l'algorithme PPO (d'après [OpenAI Spinning Up](https://spinningup.openai.com/en/latest/algorithms/ppo.html)) : 
+> _Entrée_ : Vecteur $\theta_0$ représentant les paramètres initiaux de la politique notée $\pi_\theta$, vecteur $\phi_0$ représentant les paramètres initiaux de la fonction V (pour _value function_) notée $V_\phi$. 
+> 1. pour $k = 0, 1, 2, \ldots$ faire
+> 2. $\quad$ Collecter un ensemble de trajectoires $\{\tau_i\}$ en exécutant la politique $\pi_{\theta_k}$ dans l'environnement.
+> 3. $\quad$ Calculer les récompenses (équilibrées) $G(\tau_i)$ pour chaque trajectoire $\tau_i$.
+> 4. $\quad$ Calculer les avantages estimés $\hat A_t$ en utilisant la fonction V actuelle $V_{\phi_k}$.
+> 5. $\quad$ Mettre à jour les paramètres de la politique $\theta$ en maximisant l'objectif PPO-Clip :
+> $$\theta \leftarrow \arg\max_\theta \frac{1}{|\mathcal D_k|T} \sum_{\tau \in \mathcal D_k} \sum_{t=0}^{T} \min\left(\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)} \hat A_t(s_t, a_t), g(\varepsilon, \hat A_t^{\pi_{\theta_k}}(s_t, a_t))\right)$$
+> 6. $\quad$ Mettre à jour les paramètres de la fonction V $\phi$ en minimisant la perte de la fonction V :
+> $$\phi \leftarrow \arg\min_\phi \frac{1}{|\mathcal D_k|T} \sum_{\tau \in \mathcal D_k} \sum_{t=0}^{T} \left(V_\phi(s_t) - G(\tau)_t\right)^2$$
+> 7. fin du pour
 
 ### Calcul des récompenses
 Pour rappel la récompense d'une trajectoire se calcule comme suit : 
@@ -91,119 +95,54 @@ La fonction `rewards` est définie plus haut dans `rewards.c` et renvoie un `dou
 
 > NB : En fait on n'appelle pas directement `discountedRewards` dans le code mais la fonction définie juste après `normRewards` qui normalise les récompenses sur le batch entier. Elle set détaillée plus bas dans la section sur la normalisation. 
 
-### Calcul du gradient
-La formule du gradient d'un paramètre $\theta$ est : 
-$$\nabla_\theta\mathbb E_{\pi_\theta} G(\tau) = \frac 1 L \sum_\tau\sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t\mid s_t) G(\tau)$$
-où $\mathbb E$ représente l'espérance, $G(\tau)$ la récompense de la trajectoire $\tau$, $L$ le nombre de trajectoire et $\pi_\theta$ la politique. 
+### Calcul des avantages
+Le calcul des avantages n'est pas une technique propre au PPO mais une technique utilisée dans les algorithmes dits actor-critic pour réduire la variance des gradients : on utilise une fonction V pour estimer la valeur d'un état et on soustrait cette valeur aux récompenses pour obtenir les avantages (en fait l'avantage représente la "surperformance" de l'agent par rapport à la fonction V). 
 
-**Démonstration :**
-$$
-\begin{align*}
-  \nabla_\theta \mathbb E_{\pi_\theta} G(\tau) &= \nabla_\theta \sum_\tau P(\tau \mid \theta) G(\tau) \\
-  &= \sum_\tau \nabla_\theta P(\tau\mid\theta) G(\tau) \\
-  &= \sum_\tau P(\tau\mid\theta)\frac{\nabla_\theta P(\tau\mid\theta)}{P(\tau\mid\theta)} G(\tau) \\
-  &= \sum_\tau P(\tau\mid\theta) \nabla_\theta \log P(\tau\mid\theta) G(\tau) \\
-  &= \mathbb E_{\pi_\theta} (\nabla_\theta \log P(\tau\mid\theta) G(\tau))
-\end{align*}
-$$
-Calculons $\nabla_\theta\log P(\tau\mid\theta)$ : 
-$$
-\begin{align*}
-  \nabla_\theta\log P(\tau\mid\theta) &= \nabla_\theta \log \left( p(s_0) \prod_{t=0}^{T-1} p(s_{t+1} \mid s_t, a_t) \pi_\theta(a_t\mid s_t) \right) \\
-  &= \nabla_\theta \left( \log p(s_0) + \sum_{t=0}^{T-1} \log p(s_{t+1} \mid s_t, a_t) + \log \pi_\theta(a_t\mid s_t) \right) \\
-  &= \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t \mid s_t)
-\end{align*}
-$$
-On injecte : 
-$$\nabla_\theta \mathbb E_{\pi_\theta} G(\tau) = \mathbb E_{\pi_\theta} \left( \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t\mid s_t) G(\tau) \right)$$
-Par méthode de Monte-Carlo on obtient finalement : 
-$$\nabla_\theta\mathbb E_{\pi_\theta} G(\tau) = \frac 1 L \sum_\tau\sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t\mid s_t) G(\tau)$$
+On entraîne donc une fonction V en plus de la politique. Concrètement la fonction V calcule la récompense attendue à partir d'un état en suivant la politique actuelle. \
+Améliorer l'avantage revient donc à améliorer la politique puisqu'on aurait plus de récompenses que prévu.
 
-Ce calcul est implémenté dans la fonction `backpropagation` dans le fichier `policy.c`, mais n'est pas fait d'un coup à cause des différentes optimisations (normalisations, bonus d'entropie, adam). 
+La méthode la plus commune pour le calcul d'avantage est le GAE (Generalized Advantage Estimation) qui utilise une combinaison de plusieurs estimateurs d'avantages avec différents horizons temporels pour obtenir un compromis entre biais et variance. \
 
-Voici les différentes étapes du calcul :
+Voici l'implémentation du GAE dans `rewards.c` : 
+```c
+void compute_gae(
+    const double* rewards,
+    const double* values,
+    int steps,
+    double gamma,
+    double gae_lambda,
+    double* out_advantages,
+    double* out_returns
+) {
+    double gae = 0.0;
+    for (int t = steps - 1; t >= 0; t--) {
+        double v_t = values[t];
+        double v_tp1 = (t + 1 < steps) ? values[t + 1] : 0.0;
+        double delta = rewards[t] + gamma * v_tp1 - v_t;
+        gae = delta + gamma * gae_lambda * gae;
+        out_advantages[t] = gae;
+        out_returns[t] = out_advantages[t] + v_t;
+    }
+}
+```
 
-1. On dérive le logarithme de softmax sur les logits (les valeurs obtenues avant passage au softmax). \
-Voici la formule de la dérivée : 
-$$\frac{\partial \log (\text{softmax}(z_i))}{\partial \text{logits}(z_j)} = 
-\begin{cases} 
-  1 - \text{softmax}(z_i) \quad\text{si } i = j\\ 
-  -\text{softmax}(z_i) \quad\quad\text{si } i\neq j 
+### Objectif PPO-Clip
+L'objectif PPO-Clip est la composante principale de l'algorithme PPO. Il vise à maximiser la performance de la politique tout en limitant les mises à jour trop importantes : on "clip" le ratio entre la nouvelle politique et l'ancienne pour éviter des changements trop brusques.
+
+On redonne la formule : 
+$$\theta \leftarrow \arg\max_\theta \frac{1}{|\mathcal D_k|T} \sum_{\tau \in \mathcal D_k} \sum_{t=0}^{T} \min\left(\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_k}(a_t \mid s_t)} \hat A_t(s_t, a_t), g(\varepsilon, \hat A_t^{\pi_{\theta_k}}(s_t, a_t))\right)$$
+La fonction $g$ est définie comme suit :
+$$g(\varepsilon, A) = \begin{cases}
+(1 + \varepsilon) A & \text{si } A \geq 0 \\
+(1 - \varepsilon) A & \text{si } A < 0
 \end{cases}$$
-$\quad\quad\space$ Dans le code cela se traduit par la ligne : 
-```c
-gadv = ((k == actionIndex) ? 1.0 : 0.0) - probs[k]
-```
 
-2. On multiplie par $G(\tau)$ (on aurait pu le faire plus tard et d'abord multiplier par $\frac{\partial \text{logits}}{\partial\theta}$) :
-```c
-dlogits[k] = gadv * G[t]
-```
+L'implémentation se trouve dans `policy.c`. 
 
-3. On dérive ensuite la couche de sortie (c'est simplement une couche dense, donc la dérivée est celle d'une fonction affine, on passe les détails) : 
-```c
-for (int j = 0; j < H; j++) { 
-  for (int k = 0; k < O; k++) dWout[j][k] += h[t][j] * dlogits[k]; 
-}
-```
-```c
-for (int k = 0; k < O; k++) dBout[k] += dlogits[k];
-```
+### Mise à jour de la fonction V
+Les coefficients sont directement stockés dans la structure du LSTM, et on les met à jour de manière classique en minimisant la MSE. 
 
-4. On dérive les paramètres de la couche de sortie sur l'état "caché" (traduction littérale pour hidden state) :
-```c
-for (int j = 0; j < H; j++) { 
-  double s = 0.0; 
-  for (int k = 0; k < O; k++) s += network->Wout[j][k] * dlogits[k]; 
-  dh[j] += s; 
-}
-```
-
-5. Finalement on dérive à travers chaque porte du LSTM (leur rôle/fonctionnement est détaillé plus tard dans la partie LSTM). \
-Les tableaux `f`, `i`, `g` et `o` sont les sorties des portes. `z` est l'entrée concaténée avec l'état "caché" (hidden state) précédent. `h` est l'état caché (qui est en fait la mémoire "court-terme"), `c` le "cell state" (soit la mémoire "long-terme") et `cprev` le cell state précédent. \
-Les blocs de code effectuant la dérivée sont :
-```c
-for (int j = 0; j < H; j++) do_vec[j] = dh[j] * tanh(c[t][j]);
-for (int j = 0; j < H; j++) d_o_pre[j] = do_vec[j] * o[t][j] * (1.0 - o[t][j]);
-```
-```c
-for (int j = 0; j < H; j++) dc[j] = dh[j] * o[t][j] * (1.0 - tanh(c[t][j]) * tanh(c[t][j])) + dc_next[j];
-```
-```c
-for (int j = 0; j < H; j++) df[j] = dc[j] * cprev[t][j];
-for (int j = 0; j < H; j++) d_f_pre[j] = df[j] * f[t][j] * (1.0 - f[t][j]);
-```
-```c
-for (int j = 0; j < H; j++) di_vec[j] = dc[j] * g[t][j];
-for (int j = 0; j < H; j++) d_i_pre[j] = di_vec[j] * i[t][j] * (1.0 - i[t][j]);
-```
-```c
-for (int j = 0; j < H; j++) dg[j] = dc[j] * i[t][j];
-for (int j = 0; j < H; j++) d_g_pre[j] = dg[j] * (1.0 - g[t][j] * g[t][j]);
-```
-
-6. Finalement chaque paramètre $\theta$ est mis-à-jour selon la montée de gradient donnée par la formule : 
-$$\theta \leftarrow \theta - \eta \nabla_\theta \mathbb E_{\pi_\theta} G(\tau)$$
-$\quad\quad\space$ Pour les biais :
-```c
-for (int j = 0; j < H; j++) { 
-  dBf[j] += d_f_pre[j]; 
-  dBi[j] += d_i_pre[j]; 
-  dBc[j] += d_g_pre[j]; 
-  dBo[j] += d_o_pre[j]; 
-}
-```
-$\quad\quad\space$ Pour les poids :
-```c
-for (int a = 0; a < Z; a++) { 
-  for (int j = 0; j < H; j++) {
-    dWf[a][j] += z[t][a] * d_f_pre[j];
-    dWi[a][j] += z[t][a] * d_i_pre[j];
-    dWc[a][j] += z[t][a] * d_g_pre[j];
-    dWo[a][j] += z[t][a] * d_o_pre[j];
-  } 
-}
-```
+On ne s'attarde pas dessus (implémentation dans `policy.c`).
 
 ## LSTM
 La politique utilisée est un LSTM (Long Short-Term Memory) qui est le réseau de neurones récurrent (RNN) le plus couramment utilisé. Son intérêt est son système de "mémoire" qui permet de mieux gérer les dépendances à long terme. \
@@ -373,23 +312,6 @@ On fait donc baisser la température au fur et à mesure de l'entraînement pour
 Voici la ligne dans `agent.c` responsable de la mise-à-jour de la température : 
 ```c
 temperature = fmax(1.0, 3.0 * pow(0.97, (double)episode));
-```
-
-## Epsilon-greedy
-L'epsilon-greedy est une autre technique pour gérer le dilemme exploration vs exploitation. Elle consiste à choisir l'action selon la politique avec une probabilité $1 - \varepsilon$ et à choisir une action aléatoire avec une probabilité $\varepsilon$. Ainsi, si la politique est trop confiante (si elle est bloquée à un maximum local par exemple), l'agent explorera quand même de temps en temps. 
-
-Comme pour la température, on fait baisser $\varepsilon$ au fur et à mesure de l'entraînement. 
-
-Voici les blocs de code dans `agent.c` qui gèrent l'epsilon-greedy :
-```c
-if (((double)rand() / RAND_MAX) < epsilon) {
-    traj->actions[i] = ACTIONS[rand() % ACTION_COUNT];
-} else {
-    traj->actions[i] = chooseAction(distribution);
-}
-```
-```c
-epsilon = fmax(0.02, 0.2 * pow(0.99, (double)episode));
 ```
 
 ## Bonus d'entropie
