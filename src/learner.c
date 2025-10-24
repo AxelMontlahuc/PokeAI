@@ -274,44 +274,48 @@ int main() {
         double* adv_flat = NULL;
         double** A_per_traj = NULL;
         double** R_per_traj = NULL;
-        double** logp_old = NULL;
         const double gamma = 0.90;
         const double gae_lambda = 0.95;
         if (total_steps > 0) {
             A_per_traj = malloc(sizeof(double*) * total_traj);
             R_per_traj = malloc(sizeof(double*) * total_traj);
-            logp_old = malloc(sizeof(double*) * total_traj);
             adv_flat = malloc(sizeof(double) * total_steps);
             int cur = 0;
             for (int b = 0; b < total_traj; b++) {
                 A_per_traj[b] = malloc(sizeof(double) * steps);
                 R_per_traj[b] = malloc(sizeof(double) * steps);
-                logp_old[b] = malloc(sizeof(double) * steps);
                 compute_gae(flat[b]->rewards, flat[b]->values, steps, gamma, gae_lambda, A_per_traj[b], R_per_traj[b]);
                 for (int t = 0; t < steps; t++) {
                     adv_flat[cur++] = A_per_traj[b][t];
-                    int aidx = actionToIndex(flat[b]->actions[t]);
-                    double p = fmax(flat[b]->probs[t][aidx], 1e-12);
-                    logp_old[b][t] = log(p);
                 }
             }
             normPNL(adv_flat, total_steps);
-            
-            int cur2 = 0;
-            for (int b = 0; b < total_traj; b++) {
-                for (int t = 0; t < steps; t++) {
-                    A_per_traj[b][t] = adv_flat[cur2++];
-                }
-            }
         }
 
+        int ppo_epochs = 3;
+        int mb_size = (total_traj >= 8) ? 4 : total_traj; // full-trajectory minibatches
+        int* indices = (int*)malloc(sizeof(int) * total_traj);
+        for (int i = 0; i < total_traj; i++) indices[i] = i;
         BackpropStats st = {0};
         clock_t t0 = clock();
-        backpropagation(network, 0.01, steps, flat, total_traj, temperature, epsilon, &st);
+        for (int e = 0; e < ppo_epochs; e++) {
+            for (int i = total_traj - 1; i > 0; --i) {
+                int j = rand() % (i + 1);
+                int tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
+            }
+            for (int s = 0; s < total_traj; s += mb_size) {
+                int count = (s + mb_size <= total_traj) ? mb_size : (total_traj - s);
+                trajectory** mb = (trajectory**)malloc(sizeof(trajectory*) * count);
+                for (int m = 0; m < count; m++) mb[m] = flat[indices[s + m]];
+                backpropagation(network, 0.01, steps, mb, count, temperature, epsilon, &st);
+                free(mb);
+            }
+        }
         clock_t t1 = clock();
         double secs = (double)(t1 - t0) / (double)CLOCKS_PER_SEC;
-        double sps = (secs > 0.0) ? ((double)total_steps / secs) : 0.0;
+        double sps = (secs > 0.0) ? ((double)(total_steps * ppo_epochs) / secs) : 0.0;
         printf("  Gradients : ||g||_2=%-9.4f  clip=%-6.3f  time=%-6.3fs  steps/s=%-8.1f\n", st.grad_norm, st.clip_scale, secs, sps);
+        free(indices);
 
         if (total_steps > 0) {
             const double clip_eps = 0.20;
@@ -403,6 +407,14 @@ int main() {
         }
 
         if (adv_flat) free(adv_flat);
+        if (A_per_traj) { 
+            for (int b = 0; b < total_traj; b++) free(A_per_traj[b]);
+            free(A_per_traj);
+        }
+        if (R_per_traj) { 
+            for (int b = 0; b < total_traj; b++) free(R_per_traj[b]);
+            free(R_per_traj);
+        }
 
         free(traj_returns);
 
