@@ -73,6 +73,7 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         for (int k=0; k<ACTION_COUNT; k++) traj->behav_probs[i][k] = prob_eps[k];
 
         traj->actions[i] =  ACTIONS[chooseAction(prob_eps, ACTION_COUNT)];
+        traj->values[i] = network->last_value;
 
         mgba_press_button(&conn, traj->actions[i], 50);
 

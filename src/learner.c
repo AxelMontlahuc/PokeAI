@@ -184,9 +184,11 @@ int main() {
             }
         }
 
-        double sum_step_rewards = 0.0;
-        double sum_traj_returns = 0.0;
-        double sum_entropy = 0.0;
+    double sum_step_rewards = 0.0;
+    double sum_traj_returns = 0.0;
+    double sum_entropy = 0.0;
+    double sum_values = 0.0;
+    double sumsq_values = 0.0;
         int count_steps = total_traj * steps;
         for (int i = 0; i < total_traj; i++) {
             double ret = 0.0;
@@ -198,6 +200,8 @@ int main() {
                     if (p > 0.0) H -= p * log(p);
                 }
                 sum_entropy += H;
+                sum_values += flat[i]->values[t];
+                sumsq_values += flat[i]->values[t] * flat[i]->values[t];
             }
             sum_traj_returns += ret;
             sum_step_rewards += ret;
@@ -250,6 +254,11 @@ int main() {
         printf("  Batch     : traj=%-4d steps=%-4d files=%-3d  eps=%-5.3f  temp=%-5.3f\n", total_traj, steps, n, epsilon, temperature);
         printf("  Rewards   : avg/step=%-8.5f  avg/traj=%-8.5f  p10=%-8.5f  p50=%-8.5f  p90=%-8.5f\n", avg_step_reward, avg_traj_return, p10, p50, p90);
         printf("  Entropy   : H=%-7.4f (mean across steps)\n", avg_entropy);
+        if (count_steps > 0) {
+            double mean_v = sum_values / (double)count_steps;
+            double var_v = fmax(0.0, (sumsq_values / (double)count_steps) - (mean_v * mean_v));
+            printf("  Values    : mean=%-8.5f  std=%-8.5f\n", mean_v, sqrt(var_v));
+        }
         if (total_steps > 0) {
             double behav_mean_absdiff = behav_absdiff_sum / (double)(total_steps * ACTION_COUNT);
             printf("  EpsMix    : mean|b - mix(pi,eps)| = %-10.8f\n", behav_mean_absdiff);

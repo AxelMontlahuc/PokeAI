@@ -9,7 +9,7 @@ static int read_exact(FILE* f, void* buf, size_t sz) {
 }
 
 static const char MAGIC[8] = { 'L','S','T','M','S','A','V','\0' };
-static const uint32_t VERSION = 1u;
+static const uint32_t VERSION = 2u;
 
 int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_t rng_seed) {
     FILE* f = fopen(path, "wb");
@@ -58,6 +58,12 @@ int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_
         return -1;
     }
 
+    if (write_exact(f, net->Wv, sizeof(double)*net->hiddenSize) != 0 ||
+        write_exact(f, &net->Bv, sizeof(double)) != 0) {
+        fclose(f);
+        return -1;
+    }
+
     for (int a=0; a<Z; a++) {
         if (write_exact(f, net->Wf_m[a], sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Wf_v[a], sizeof(double)*net->hiddenSize) != 0 ||
             write_exact(f, net->Wi_m[a], sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Wi_v[a], sizeof(double)*net->hiddenSize) != 0 ||
@@ -72,6 +78,14 @@ int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_
         write_exact(f, net->Bi_m, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Bi_v, sizeof(double)*net->hiddenSize) != 0 ||
         write_exact(f, net->Bc_m, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Bc_v, sizeof(double)*net->hiddenSize) != 0 ||
         write_exact(f, net->Bo_m, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Bo_v, sizeof(double)*net->hiddenSize) != 0) {
+        fclose(f);
+        return -1;
+    }
+
+    if (write_exact(f, net->Wv_m, sizeof(double)*net->hiddenSize) != 0 ||
+        write_exact(f, net->Wv_v, sizeof(double)*net->hiddenSize) != 0 ||
+        write_exact(f, &net->Bv_m, sizeof(double)) != 0 ||
+        write_exact(f, &net->Bv_v, sizeof(double)) != 0) {
         fclose(f);
         return -1;
     }
@@ -144,6 +158,11 @@ LSTM* loadLSTM(const char* path, uint64_t* episodes, uint64_t* rng_seed) {
         fclose(f); freeLSTM(net); return NULL;
     }
 
+    if (read_exact(f, net->Wv, sizeof(double)*net->hiddenSize) != 0 ||
+        read_exact(f, &net->Bv, sizeof(double)) != 0) {
+        fclose(f); freeLSTM(net); return NULL;
+    }
+
     for (int a = 0; a < Z; a++) {
         if (read_exact(f, net->Wf_m[a], sizeof(double)*net->hiddenSize) != 0 ||
             read_exact(f, net->Wf_v[a], sizeof(double)*net->hiddenSize) != 0 ||
@@ -165,6 +184,13 @@ LSTM* loadLSTM(const char* path, uint64_t* episodes, uint64_t* rng_seed) {
         read_exact(f, net->Bc_v, sizeof(double)*net->hiddenSize) != 0 ||
         read_exact(f, net->Bo_m, sizeof(double)*net->hiddenSize) != 0 ||
         read_exact(f, net->Bo_v, sizeof(double)*net->hiddenSize) != 0) {
+        fclose(f); freeLSTM(net); return NULL;
+    }
+
+    if (read_exact(f, net->Wv_m, sizeof(double)*net->hiddenSize) != 0 ||
+        read_exact(f, net->Wv_v, sizeof(double)*net->hiddenSize) != 0 ||
+        read_exact(f, &net->Bv_m, sizeof(double)) != 0 ||
+        read_exact(f, &net->Bv_v, sizeof(double)) != 0) {
         fclose(f); freeLSTM(net); return NULL;
     }
 

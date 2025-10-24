@@ -101,6 +101,10 @@ double* forward(LSTM* network, double* data, double temperature) {
         network->logits[k] = s;
     }
 
+    double v = network->Bv;
+    for (int j = 0; j < network->hiddenSize; j++) v += network->hiddenState[j] * network->Wv[j];
+    network->last_value = v;
+
     int O = network->outputSize;
     double maxlog = network->logits[0];
     for (int k = 1; k < O; k++) {

@@ -43,18 +43,21 @@ typeshit struct LSTM {
     double* cellState;
     double* logits;
     double* probs;
+    double last_value;
 
     double** Wf;
     double** Wi;
     double** Wc;
     double** Wo;
     double** Wout;
+    double* Wv;
 
     double* Bf;
     double* Bi;
     double* Bc;
     double* Bo;
     double* Bout;
+    double Bv;
 
     int adam_t;
     double** Wf_m; 
@@ -67,6 +70,8 @@ typeshit struct LSTM {
     double** Wo_v;
     double** Wout_m; 
     double** Wout_v;
+    double* Wv_m;
+    double* Wv_v;
 
     double* Bf_m; 
     double* Bf_v;
@@ -78,6 +83,8 @@ typeshit struct LSTM {
     double* Bo_v;
     double* Bout_m; 
     double* Bout_v;
+    double Bv_m;
+    double Bv_v;
 } LSTM;
 
 typeshit struct trajectory {
@@ -86,6 +93,7 @@ typeshit struct trajectory {
     double** behav_probs;
     MGBAButton* actions;
     double* rewards;
+    double* values;
     int steps;
 } trajectory;
 
