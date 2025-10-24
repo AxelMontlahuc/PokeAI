@@ -12,17 +12,23 @@ Quand à l'agent, c'est un VPG (Vanilla Policy Gradient) utilisant pour politiqu
 ```sh
 ~$ git clone https://github.com/AxelMontlahuc/PokeAI.git
 ```
-2. Compiler le projet avec : 
+2. Placer une ROM de Pokémon Emeraude (version FR) nommée `pokemon.gba` dans le dossier `ROM`.
+3. Compiler le projet avec : 
 ```sh
 ~$ make
 ```
-3. Placer une ROM de Pokémon Emeraude (version FR) nommée `pokemon.gba` dans le dossier `ROM`.
-4. Lancer mGBA avec le script Lua `mGBASocketServer.lua` chargé.
-5. Lancer l'agent avec : 
+4. Lancer le programme responsable de l'apprentissage :
 ```sh
-~$ ./bin/agent     # On Linux
-~$ ./bin/agent.exe # On Windows
+~$ ./bin/learner     # Sur Linux
+~$ ./bin/learner.exe # Sur Windows
 ```
+5. Lancer $N$ instances de mGBA avec le script Lua `mGBASocketServer.lua` chargé.
+6. Lancer un agent pour chaque instance de mGBA :
+```sh
+~$ ./bin/agent 88XX     # Sur Linux
+~$ ./bin/agent.exe 88XX # Sur Windows
+```
+où `88XX` est le port sur lequel l'instance de mGBA écoute (pour le premier agent mettre `8888`, pour le deuxième `8889`, etc).
 
 # Structure
 - `mGBASocketServer.lua` : Script Lua utilisant l'API de mGBA pour faire le pont avec `mGBA-interface` à travers un socket.
