@@ -55,7 +55,6 @@ LEARNER_OBJS := $(LEARNER_SRC:%.c=$(BUILD_DIR)/%.o)
 MGBA_SRC := \
   mGBA-interface/src/mgba_connection.c \
   mGBA-interface/src/mgba_controller.c \
-  mGBA-interface/src/mgba_map.c \
   mGBA-interface/src/mgba_intel.c
 
 MGBA_OBJS := $(MGBA_SRC:%.c=$(BUILD_DIR)/%.o)

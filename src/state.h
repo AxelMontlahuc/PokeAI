@@ -10,7 +10,6 @@
 
 #include "../mGBA-interface/include/mgba_connection.h"
 #include "../mGBA-interface/include/mgba_intel.h"
-#include "../mGBA-interface/include/mgba_map.h"
 
 state fetchState(MGBAConnection conn);
 double* convertState(state s);
