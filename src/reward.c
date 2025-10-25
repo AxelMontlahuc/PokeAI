@@ -6,46 +6,70 @@ bool CLOCK_FLAG = false;
 bool OUTDOOR_FLAG = false;
 bool OPP_HOUSE_FLAG = false;
 bool OPP_ROOM_FLAG = false;
+bool ROUTE_101_FLAG = false;
 
 double pnl(state s, state s_next) {
     double pnl = -0.005;
 
     if (!HOUSE_FLAG && s_next.zone == 1) {
         HOUSE_FLAG = true;
-        pnl += 0.5;
+        pnl += 1.5;
     }
 
     if (!ROOM_FLAG && s_next.zone == 257) {
         ROOM_FLAG = true;
-        pnl += 2.5;
+        pnl += 1.7;
     }
 
     if (!CLOCK_FLAG && s_next.clock == 80) {
         CLOCK_FLAG = true;
-        pnl += 10.0;
+        pnl += 2.0;
     }
 
-    if (CLOCK_FLAG && !OUTDOOR_FLAG && s_next.zone == 0) {
+    if (CLOCK_FLAG && !OUTDOOR_FLAG && s_next.zone == 2304) {
         OUTDOOR_FLAG = true;
-        pnl += 1.0;
+        pnl += 1.5;
     }
 
     if (!OPP_HOUSE_FLAG && s_next.zone == 513) {
         OPP_HOUSE_FLAG = true;
-        pnl += 7.5;
+        pnl += 2.2;
     }
 
-    if (!OPP_ROOM_FLAG && OPP_HOUSE_FLAG && s.zone == 513 && s_next.zone == 0) {
+    if (!OPP_ROOM_FLAG && OPP_HOUSE_FLAG && s.zone == 513 && s_next.zone == 2304) {
         pnl -= 3.0;
     }
 
-    if (!OPP_ROOM_FLAG && OPP_HOUSE_FLAG && s.zone == 0 && s_next.zone == 513) {
-        pnl += 2.5;
+    if (!OPP_ROOM_FLAG && OPP_HOUSE_FLAG && s.zone == 2304 && s_next.zone == 513) {
+        pnl += 2.2;
     }
 
     if (!OPP_ROOM_FLAG && s_next.zone == 769) {
         OPP_ROOM_FLAG = true;
-        pnl += 5.0;
+        pnl += 2.0;
+    }
+
+    if (!ROUTE_101_FLAG && s_next.zone == 4096) {
+        ROUTE_101_FLAG = true;
+        pnl += 2.0;
+    }
+
+    for (int i = 0; i < 6; i++) {
+        if (s_next.team[i].level > s.team[i].level) {
+            pnl += 2.0 * (double)(s_next.team[i].level - s.team[i].level);
+        }
+
+        if (s.team[i].hp == 0 && s_next.team[i].hp > 0) {
+            pnl += 1.0;
+        }
+
+        if (s.team[i].hp > 0 && s_next.team[i].hp == 0) {
+            pnl -= 1.0;
+        }
+    }
+
+    if (s.enemy[0] > 0 && s_next.enemy[0] == 0) {
+        pnl += 2.0;
     }
 
     return pnl;

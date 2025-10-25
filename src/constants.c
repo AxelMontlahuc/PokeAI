@@ -10,8 +10,8 @@ const char* const QUEUE_DIR = "queue";
 const char* const LOCKS_DIR = "locks";
 const char* const CHECKPOINT_PATH = "checkpoints/model-last.sav";
 
-int WORKER_TRAJECTORIES = 32;
-int WORKER_STEPS = 64;
+int WORKER_TRAJECTORIES = 64;
+int WORKER_STEPS = 256;
 int WORKER_BATCH_SIZE = 8;
 int BUTTON_PRESS_MS = 50;
 
