@@ -33,7 +33,6 @@ BIN_DIR := bin
 
 COMMON_SRC := \
 	src/policy.c \
-	src/struct.c \
 	src/constants.c \
 	src/checkpoint.c \
 	src/reward.c \

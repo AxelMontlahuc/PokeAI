@@ -58,3 +58,35 @@ double* convertState(state s) {
 
     return out;
 }
+
+trajectory* initTrajectory(int steps) {
+    trajectory* traj = malloc(sizeof(trajectory));
+    assert(traj != NULL);
+
+    traj->states = malloc(steps * sizeof(state));
+    traj->actions = malloc(steps * sizeof(MGBAButton));
+    traj->rewards = malloc(steps * sizeof(double));
+    traj->probs = malloc(steps * sizeof(double*));
+    traj->values = malloc(steps * sizeof(double));
+    assert(traj->states != NULL && traj->actions != NULL && traj->rewards != NULL && traj->probs != NULL && traj->values != NULL);
+
+    for (int i=0; i<steps; i++) {
+        traj->probs[i] = NULL;
+    }
+
+    traj->steps = steps;
+
+    return traj;
+}
+
+void freeTrajectory(trajectory* traj) {
+    free(traj->states);
+    for (int i=0; i<traj->steps; i++) {
+        free(traj->probs[i]);
+    }
+    free(traj->actions);
+    free(traj->rewards);
+    free(traj->probs);
+    free(traj->values);
+    free(traj);
+}

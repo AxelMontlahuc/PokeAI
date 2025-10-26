@@ -7,7 +7,7 @@
 #include <assert.h>
 #include <math.h>
 
-#include "struct.h"
+#include "state.h"
 #include "constants.h"
 
 double pnl(state s, state s_next);

@@ -11,7 +11,6 @@
 #include <unistd.h>
 #endif
 
-#include "struct.h"
 #include "state.h"
 #include "reward.h"
 #include "policy.h"

@@ -7,7 +7,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "struct.h"
+#include "state.h"
 #include "constants.h"
 
 int write_batch_file(const char* path_tmp, const char* path_final, trajectory** batch, int batch_size, int steps, double temperature);

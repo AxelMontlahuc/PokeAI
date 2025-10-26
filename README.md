@@ -36,8 +36,7 @@ où `88XX` est le port sur lequel l'instance de mGBA écoute (pour le premier ag
 - `src` : Code source de l'agent en C :
   - `agent` : Boucle principale de l'agent, gestion des épisodes, interaction avec l'environnement.
   - `policy` : Implémentation du LSTM et du VPG. 
-  - `struct` : Définitions, initialisation et libération des structures de données.
-  - `state` : Fonctions liées à l'état du jeu. 
+  - `state` : Fonctions liées à l'état/trajectoires du jeu. 
   - `checkpoint.c` : Sauvegarde et restauration du modèle complet. 
 - `bin` : Dossier des exécutables.
 - `build` : Dossier des fichiers objets compilés.
@@ -157,7 +156,7 @@ Comme la figure 3 l'illustre, un LSTM est constitué de quatre "portes" (gates) 
 
 Notons de plus qu'il y a deux états intrinsèques au LSTM que l'on nommera état caché (pour hidden state) noté $h$ et état cellule (pour cell state) noté $c$. Ils représentent en fait respectivement la mémoire "court-terme" et la mémoire "long-terme" du LSTM.
 
-Chaque porte a donc ses propres paramètres (poids et biais), d'où notre implémentation dans `struct.h` : 
+Chaque porte a donc ses propres paramètres (poids et biais), d'où notre implémentation dans `policy.h` : 
 ```c
 typeshit struct LSTM {
     int inputSize;
@@ -182,7 +181,7 @@ typeshit struct LSTM {
 ```
 Remarquons qu'on a les paramètres de la couche de sortie `Wout` et `Bout` en plus : nous avons choisit de rajouter une couche dense après le LSTM pour faire la sortie de la politique, ce qui permet notamment d'avoir un tableau avec une taille en sortie égale au nombre d'actions possibles (on peut donc directement appliquer un softmax dessus pour obtenir une distribution de probabilité sur les actions).
 
-> **NB :** La structure présente dans `struct.h` possède d'autre champs pour l'optimiseur Adam que nous détaillerons après, ainsi que pour stocker des informations utiles lors de la backpropagation (comme les probabilités). 
+> **NB :** La structure présente dans `policy.h` possède d'autre champs pour l'optimiseur Adam que nous détaillerons après, ainsi que pour stocker des informations utiles lors de la backpropagation (comme les probabilités). 
 
 Détaillons à présent le fonctionnement de chaque porte du LSTM : 
 ### Porte F (Forget Gate)
@@ -478,7 +477,7 @@ $$\hat{m}_t = \frac{m_t}{1 - \beta_1^t} \quad\text{et}\quad \hat{v}_t = \frac{v_
 Finalement la montée de gradient devient : 
 $$\theta \leftarrow \theta - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \varepsilon}$$
 
-Comme on doit stocker les gradients passés pour calculer $m_t$ et $v_t$, nous avons ajouté des champs dans la structure `LSTM` pour stocker ces valeurs (défini dans `struct.h`). Voici donc la structure complète : 
+Comme on doit stocker les gradients passés pour calculer $m_t$ et $v_t$, nous avons ajouté des champs dans la structure `LSTM` pour stocker ces valeurs (défini dans `policy.h`). Voici donc la structure complète : 
 ```c
 typeshit struct LSTM {
     int inputSize;
