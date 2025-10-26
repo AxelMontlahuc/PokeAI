@@ -236,7 +236,7 @@ int main() {
             for (int b = 0; b < total_traj; b++) {
                 A_per_traj[b] = malloc(sizeof(double) * steps);
                 R_per_traj[b] = malloc(sizeof(double) * steps);
-                compute_gae(flat[b]->rewards, flat[b]->values, steps, GAMMA_DISCOUNT, GAE_LAMBDA, A_per_traj[b], R_per_traj[b]);
+                computeGAE(flat[b]->rewards, flat[b]->values, steps, GAMMA_DISCOUNT, GAE_LAMBDA, A_per_traj[b], R_per_traj[b]);
                 for (int t = 0; t < steps; t++) {
                     adv_flat[cur++] = A_per_traj[b][t];
                 }

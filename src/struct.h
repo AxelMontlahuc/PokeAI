@@ -108,6 +108,19 @@ static inline int actionToIndex(MGBAButton action) {
     }
 }
 
+static inline MGBAButton indexToAction(int index) {
+    switch (index) {
+        case 0: return MGBA_BUTTON_UP;
+        case 1: return MGBA_BUTTON_DOWN;
+        case 2: return MGBA_BUTTON_LEFT;
+        case 3: return MGBA_BUTTON_RIGHT;
+        case 4: return MGBA_BUTTON_A;
+        case 5: return MGBA_BUTTON_B;
+        case 6: return MGBA_BUTTON_START;
+        default: return MGBA_BUTTON_B;
+    }
+}
+
 LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize);
 void freeLSTM(LSTM* network);
 trajectory* initTrajectory(int steps);
