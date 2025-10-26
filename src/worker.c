@@ -122,6 +122,7 @@ int main(int argc, char** argv) {
         }
 
         mgba_reset(&conn);
+        resetFlags();
 
         temperature = fmax(TEMP_MIN, TEMP_MAX * pow(TEMP_DECAY, (double)episode));
 
