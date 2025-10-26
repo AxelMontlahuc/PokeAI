@@ -340,6 +340,13 @@ static void adam_update_matrix(double** P, double** M, double** V, double** G, i
     }
 }
 
+static inline double clip_grad(double ratio, double advantage, double clip_eps) {
+    double low = 1.0 - clip_eps;
+    double high = 1.0 + clip_eps;
+    bool clipped = (advantage > 0.0 && ratio > high) || (advantage < 0.0 && ratio < low);
+    return clipped ? 0.0 : (ratio * advantage);
+}
+
 void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batch_count, double temperature, BackpropStats* stats) {
     int H = network->hiddenSize;
     int I = network->inputSize;
@@ -510,10 +517,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             double logp_old = log(tr->probs[t][actionIndex] + NUM_EPS);
             double ratio = exp(logp_new - logp_old);
             double A = As[b][t];
-            double low = 1.0 - CLIP_EPS;
-            double high = 1.0 + CLIP_EPS;
-            bool clipped = (A > 0.0 && ratio > high) || (A < 0.0 && ratio < low);
-            double grad_weight = clipped ? 0.0 : (ratio * A);
+            double grad_weight = clip_grad(ratio, A, CLIP_EPS);
 
             for (int k = 0; k < O; k++) {
                 double base = ((k == actionIndex) ? 1.0 : 0.0) - probs_now[k];
