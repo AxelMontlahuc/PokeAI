@@ -32,9 +32,8 @@ BUILD_DIR := build
 BIN_DIR := bin
 
 COMMON_SRC := \
-	src/func.c \
 	src/policy.c \
-	src/struct.c \
+	src/constants.c \
 	src/checkpoint.c \
 	src/reward.c \
 	src/serializer.c

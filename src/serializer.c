@@ -1,98 +1,90 @@
 #include "serializer.h"
 
-static int write_exact(FILE* f, const void* buf, size_t n) {
-    return fwrite(buf, 1, n, f) == n ? 0 : -1;
-}
-static int read_exact(FILE* f, void* buf, size_t n) {
-    return fread(buf, 1, n, f) == n ? 0 : -1;
-}
-
-int write_batch_file(const char* path_tmp, const char* path_final, trajectory** batch, int batch_size, int steps, double epsilon, double temperature) {
+int write_batch_file(const char* path_tmp, const char* path_final, trajectory** batch, int batch_size, int steps, double temperature) {
     FILE* f = fopen(path_tmp, "wb");
-    assert(f != NULL);
+    if (!f) return -1;
 
-    TrajFileHeader hdr = {0};
-    hdr.magic = 0x30524A54u; // 'TRJ0' in little-endian
-    hdr.version = 1;
-    hdr.steps = (uint32_t)steps;
-    hdr.batch_size = (uint32_t)batch_size;
-    hdr.action_count = ACTION_COUNT;
-    hdr.state_size = (uint32_t)sizeof(state);
-    hdr.epsilon = epsilon;
-    hdr.temperature = temperature;
+    uint32_t magic = TRAJ_MAGIC;
+    uint16_t version = TRAJ_VERSION;
+    uint16_t reserved = 0u;
+    uint32_t steps_u32 = (uint32_t)steps;
+    uint32_t batch_u32 = (uint32_t)batch_size;
+    uint32_t action_u32 = (uint32_t)ACTION_COUNT;
+    uint32_t state_u32 = (uint32_t)sizeof(state);
 
-    if (write_exact(f, &hdr, sizeof(hdr)) != 0) {
-        fclose(f); 
-        return -1;
-    }
+    fwrite(&magic, sizeof(magic), 1, f);
+    fwrite(&version, sizeof(version), 1, f);
+    fwrite(&reserved, sizeof(reserved), 1, f);
+    fwrite(&steps_u32, sizeof(steps_u32), 1, f);
+    fwrite(&batch_u32, sizeof(batch_u32), 1, f);
+    fwrite(&action_u32, sizeof(action_u32), 1, f);
+    fwrite(&state_u32, sizeof(state_u32), 1, f);
+    fwrite(&temperature, sizeof(double), 1, f);
 
     for (int b = 0; b < batch_size; b++) {
         trajectory* t = batch[b];
-        
         for (int i = 0; i < steps; i++) {
-            uint16_t a = (uint16_t)t->actions[i];
-            if (write_exact(f, &t->states[i], sizeof(state)) != 0 || write_exact(f, t->probs[i], sizeof(double) * ACTION_COUNT) != 0 || 
-                write_exact(f, &a, sizeof(uint16_t)) != 0 || write_exact(f, &t->rewards[i], sizeof(double)) != 0) {
-                fclose(f);
-                return -1;
-            }
+            uint16_t action = (uint16_t)actionToIndex(t->actions[i]);
+            fwrite(&t->states[i], sizeof(state), 1, f);
+            fwrite(t->probs[i], sizeof(double), ACTION_COUNT, f);
+            fwrite(&t->values[i], sizeof(double), 1, f);
+            fwrite(&action, sizeof(uint16_t), 1, f);
+            fwrite(&t->rewards[i], sizeof(double), 1, f);
         }
     }
 
-    if (fclose(f) != 0) return -1;
+    fclose(f);
 
     if (rename(path_tmp, path_final) != 0) {
         remove(path_tmp);
         return -1;
     }
+
     return 0;
 }
 
-int read_batch_file(const char* path, trajectory*** out_batch, int* out_batch_size, int* out_steps, double* out_epsilon, double* out_temperature) {
+int read_batch_file(const char* path, trajectory*** out_batch, int* out_batch_size, int* out_steps, double* out_temperature) {
     FILE* f = fopen(path, "rb");
     if (!f) return -1;
 
-    TrajFileHeader hdr;
-    if (read_exact(f, &hdr, sizeof(hdr)) != 0) { 
-        fclose(f); 
-        return -1; 
-    }
+    uint32_t magic; 
+    uint16_t version; 
+    uint16_t reserved;
+    uint32_t steps_u32;
+    uint32_t batch_u32;
+    uint32_t action_u32;
+    uint32_t state_u32; 
+    double temperature;
 
-    if (hdr.magic != 0x30524A54u || hdr.version != 1 || hdr.action_count != ACTION_COUNT || hdr.state_size != sizeof(state)) {
-        fclose(f);
-        return -1;
-    }
+    fread(&magic, sizeof(magic), 1, f);
+    fread(&version, sizeof(version), 1, f);
+    fread(&reserved, sizeof(reserved), 1, f);
+    fread(&steps_u32, sizeof(steps_u32), 1, f);
+    fread(&batch_u32, sizeof(batch_u32), 1, f);
+    fread(&action_u32, sizeof(action_u32), 1, f);
+    fread(&state_u32, sizeof(state_u32), 1, f);
+    fread(&temperature, sizeof(double), 1, f);
 
-    int steps = (int)hdr.steps;
-    int batch_size = (int)hdr.batch_size;
+    int steps = (int)steps_u32;
+    int batch_size = (int)batch_u32;
 
-    trajectory** batch = (trajectory**)malloc(sizeof(trajectory*) * batch_size);
-    if (!batch) { 
-        fclose(f); 
-        return -1; 
-    }
+    trajectory** batch = malloc(batch_size * sizeof(trajectory*));
+    assert(batch != NULL);
 
     for (int b = 0; b < batch_size; b++) {
         trajectory* t = initTrajectory(steps);
-        if (!t) { 
-            fclose(f); 
-            return -1; 
-        }
-
         for (int i = 0; i < steps; i++) {
-            t->probs[i] = (double*)malloc(sizeof(double) * ACTION_COUNT);
-            uint16_t a16;
+            t->probs[i] = malloc(ACTION_COUNT * sizeof(double));
+            assert(t->probs[i] != NULL);
 
-            if (read_exact(f, &t->states[i], sizeof(state)) != 0 || !t->probs[i] || 
-                read_exact(f, t->probs[i], sizeof(double) * ACTION_COUNT) != 0 || read_exact(f, &a16, sizeof(uint16_t)) != 0 || 
-                read_exact(f, &t->rewards[i], sizeof(double)) != 0) { 
-                fclose(f); 
-                return -1; 
-            }
-
-            t->actions[i] = (MGBAButton)a16;
+            uint16_t action;
+            fread(&t->states[i], sizeof(state), 1, f);
+            fread(t->probs[i], sizeof(double), ACTION_COUNT, f);
+            fread(&t->values[i], sizeof(double), 1, f);
+            fread(&action, sizeof(uint16_t), 1, f);
+            fread(&t->rewards[i], sizeof(double), 1, f);
+            t->actions[i] = indexToAction((int)action);
         }
-
         batch[b] = t;
     }
 
@@ -101,9 +93,7 @@ int read_batch_file(const char* path, trajectory*** out_batch, int* out_batch_si
     *out_batch = batch;
     *out_batch_size = batch_size;
     *out_steps = steps;
-
-    if (out_epsilon) *out_epsilon = hdr.epsilon;
-    if (out_temperature) *out_temperature = hdr.temperature;
+    *out_temperature = temperature;
     
     return 0;
 }

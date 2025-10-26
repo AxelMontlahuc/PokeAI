@@ -7,14 +7,20 @@
 #include <assert.h>
 #include <math.h>
 
-#include "struct.h"
-
-#include "../mGBA-interface/include/mgba_intel.h"
+#include "state.h"
+#include "constants.h"
 
 double pnl(state s, state s_next);
-double* discountedPNL(double* rewards, double gamma, int steps);
 void normPNL(double* G, int n);
-bool stop();
-void reset_flags();
+void computeGAE(
+	double* rewards,
+	double* values,
+	int steps,
+	double gamma,
+	double lambda,
+	double* out_advantages,
+	double* out_returns
+);
+
 
 #endif
