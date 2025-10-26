@@ -32,7 +32,6 @@ BUILD_DIR := build
 BIN_DIR := bin
 
 COMMON_SRC := \
-	src/func.c \
 	src/policy.c \
 	src/struct.c \
 	src/constants.c \

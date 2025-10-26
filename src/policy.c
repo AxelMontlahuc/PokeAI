@@ -2,6 +2,10 @@
 #include "state.h"
 #include "constants.h"
 
+double sigmoid(double x) {
+    return 1.0 / (1.0 + exp(-x));
+}
+
 void entropyBonus(const double* probs, int O, double coeff, double* dlogits) {
     double mean_logp = 0.0;
     for (int k = 0; k < O; k++) {

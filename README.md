@@ -39,7 +39,6 @@ où `88XX` est le port sur lequel l'instance de mGBA écoute (pour le premier ag
   - `struct` : Définitions, initialisation et libération des structures de données.
   - `state` : Fonctions liées à l'état du jeu. 
   - `checkpoint.c` : Sauvegarde et restauration du modèle complet. 
-  - `func` : Fonctions auxiliaires. 
 - `bin` : Dossier des exécutables.
 - `build` : Dossier des fichiers objets compilés.
 - `ROM` : Dossier où placer la ROM de Pokémon Emeraude et éventuellement des savestates (sauvegardes).
