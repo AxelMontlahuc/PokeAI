@@ -427,7 +427,9 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
         assert(hprev != NULL && cprev_vec != NULL);
 
         for (int t = 0; t < T; t++) {
-            x[t] = convertState(tr->states[t]);
+            x[t] = malloc(I * sizeof(double));
+            assert(x[t] != NULL);
+            convertState(tr->states[t], x[t]);
             z[t] = malloc(Z * sizeof(double));
             assert(z[t] != NULL);
             for (int a = 0; a < I; a++) z[t][a] = x[t][a];

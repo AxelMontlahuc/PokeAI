@@ -282,13 +282,15 @@ int main() {
             double surr_sum = 0.0;
 
             int flat_idx = 0;
+            double* input_vec = malloc(INPUT_SIZE * sizeof(double));
+            assert(input_vec != NULL);
             for (int i = 0; i < total_traj; i++) {
                 for (int j = 0; j < network->hiddenSize; j++) {
                     network->hiddenState[j] = 0.0;
                     network->cellState[j] = 0.0;
                 }
                 for (int t = 0; t < steps; t++) {
-                    double* input_vec = convertState(flat[i]->states[t]);
+                    convertState(flat[i]->states[t], input_vec);
                     double* p_new = forward(network, input_vec, temperature);
 
                     double* p_old = flat[i]->probs[t];
@@ -317,9 +319,9 @@ int main() {
                     }
 
                     flat_idx++;
-                    free(input_vec);
                 }
             }
+            free(input_vec);
 
             double mean_kl = kl_sum / (double)total_steps;
             double mean_ratio = ratio_sum / (double)total_steps;

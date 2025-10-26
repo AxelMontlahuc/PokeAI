@@ -53,10 +53,12 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         network->cellState[j] = 0.0;
     }
 
+    double* input_vec = malloc(INPUT_SIZE * sizeof(double));
+    assert(input_vec != NULL);
+
     for (int i=0; i<steps; i++) {
         traj->states[i] = fetchState(conn);
-
-        double* input_vec = convertState(traj->states[i]);
+        convertState(traj->states[i], input_vec);
         double* probs = forward(network, input_vec, temperature);
 
         traj->probs[i] = malloc(ACTION_COUNT * sizeof(double));
@@ -72,8 +74,9 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         state s_next = fetchState(conn);
         traj->rewards[i] = pnl(traj->states[i], s_next);
 
-        free(input_vec);
     }
+
+    free(input_vec);
 
     return traj;
 }
