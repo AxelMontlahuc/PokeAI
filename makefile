@@ -1,7 +1,7 @@
 CC := gcc
 AR := ar
 CSTD := -std=c99
-CFLAGS := $(CSTD) -Wall -Wextra -O2 -Isrc -ImGBA-interface/include
+CFLAGS := $(CSTD) -Wall -Wextra -O3 -march=native -ffast-math -Isrc -ImGBA-interface/include
 
 ifeq ($(OS),Windows_NT)
 	UNAME_S := Windows

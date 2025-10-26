@@ -70,7 +70,7 @@ static inline MGBAButton indexToAction(int index) {
 }
 
 state fetchState(MGBAConnection conn);
-double* convertState(state s);
+void convertState(state s, double* out);
 trajectory* initTrajectory(int steps);
 void freeTrajectory(trajectory* traj);
 

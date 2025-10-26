@@ -11,11 +11,11 @@ const char* const LOCKS_DIR = "locks";
 const char* const CHECKPOINT_PATH = "checkpoints/model-last.sav";
 
 int WORKER_TRAJECTORIES = 64;
-int WORKER_STEPS = 256;
+int WORKER_STEPS = 128;
 int WORKER_BATCH_SIZE = 8;
 int BUTTON_PRESS_MS = 50;
 
-double TEMP_MAX = 3.0;
+double TEMP_MAX = 2.0;
 double TEMP_MIN = 1.0;
 double TEMP_DECAY = 0.97;
 
@@ -35,9 +35,9 @@ double GAMMA_DISCOUNT = 0.90;
 double GAE_LAMBDA = 0.95;
 
 double ENTROPY_COEFF = 0.05;
-double VALUE_COEFF = 0.50;
+double VALUE_COEFF = 0.10;
 double VALUE_CLIP_EPS = 0.20;
-double GRAD_CLIP_NORM = 1.0;
+double GRAD_CLIP_NORM = 100.0;
 
 double ADAM_BETA1 = 0.9;
 double ADAM_BETA2 = 0.999;

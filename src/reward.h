@@ -21,6 +21,7 @@ void computeGAE(
 	double* out_advantages,
 	double* out_returns
 );
+void resetFlags();
 
 
 #endif
