@@ -373,7 +373,7 @@ int main() {
         free(traj_returns);
 
         episode++;
-        saveLSTMCheckpoint(CHECKPOINT_PATH, network, (uint64_t)episode, (uint64_t)seed);
+        saveLSTM(CHECKPOINT_PATH, network, (uint64_t)episode, (uint64_t)seed);
 
         for (int i = 0; i < total_traj; i++) freeTrajectory(flat[i]);
         free(flat);

@@ -1,212 +1,151 @@
 #include "checkpoint.h"
 
-static int write_exact(FILE* f, const void* buf, size_t sz) {
-    return fwrite(buf, 1, sz, f) == sz ? 0 : -1;
-}
-
-static int read_exact(FILE* f, void* buf, size_t sz) {
-    return fread(buf, 1, sz, f) == sz ? 0 : -1;
-}
-
-int saveLSTMCheckpoint(const char* path, const LSTM* net, uint64_t step, uint64_t rng_seed) {
+int saveLSTM(const char* path, const LSTM* net, uint64_t episodes, uint64_t seed) {
     FILE* f = fopen(path, "wb");
     if (!f) return -1;
 
     uint32_t inputSize = (uint32_t)net->inputSize;
     uint32_t hiddenSize = (uint32_t)net->hiddenSize;
     uint32_t outputSize = (uint32_t)net->outputSize;
-    uint64_t episodes = step;
-    uint64_t seed = rng_seed;
 
-    if (write_exact(f, CKPT_MAGIC, sizeof(CKPT_MAGIC)) != 0 || write_exact(f, &CKPT_VERSION, sizeof(CKPT_VERSION)) != 0 ||
-        write_exact(f, &inputSize, sizeof(inputSize)) != 0 || write_exact(f, &hiddenSize, sizeof(hiddenSize)) != 0 ||
-        write_exact(f, &outputSize, sizeof(outputSize)) != 0 || write_exact(f, &episodes, sizeof(episodes)) != 0 ||
-        write_exact(f, &seed, sizeof(seed)) != 0) {
-        fclose(f); 
-        return -1;
+    fwrite(CKPT_MAGIC, sizeof(CKPT_MAGIC), 1, f);
+    fwrite(&CKPT_VERSION, sizeof(CKPT_VERSION), 1, f);
+    fwrite(&inputSize, sizeof(inputSize), 1, f);
+    fwrite(&hiddenSize, sizeof(hiddenSize), 1, f);
+    fwrite(&outputSize, sizeof(outputSize), 1, f);
+    fwrite(&episodes, sizeof(episodes), 1, f);
+    fwrite(&seed, sizeof(seed), 1, f);
+
+    int Z = (int)inputSize + (int)hiddenSize;
+
+    for (int i=0; i<Z; i++) {
+        fwrite(net->Wf[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wf_m[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wf_v[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wi[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wi_m[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wi_v[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wc[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wc_m[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wc_v[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wo[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wo_m[i], sizeof(double), hiddenSize, f);
+        fwrite(net->Wo_v[i], sizeof(double), hiddenSize, f);
     }
 
+    fwrite(net->Bf, sizeof(double), hiddenSize, f);
+    fwrite(net->Bf_m, sizeof(double), hiddenSize, f);
+    fwrite(net->Bf_v, sizeof(double), hiddenSize, f);
+    fwrite(net->Bi, sizeof(double), hiddenSize, f);
+    fwrite(net->Bi_m, sizeof(double), hiddenSize, f);
+    fwrite(net->Bi_v, sizeof(double), hiddenSize, f);
+    fwrite(net->Bc, sizeof(double), hiddenSize, f);
+    fwrite(net->Bc_m, sizeof(double), hiddenSize, f);
+    fwrite(net->Bc_v, sizeof(double), hiddenSize, f);
+    fwrite(net->Bo, sizeof(double), hiddenSize, f);
+    fwrite(net->Bo_m, sizeof(double), hiddenSize, f);
+    fwrite(net->Bo_v, sizeof(double), hiddenSize, f);
 
-    int Z = net->inputSize + net->hiddenSize;
-    for (int i=0;i<Z;i++) {
-        if (write_exact(f, net->Wf[i], sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Wi[i], sizeof(double)*net->hiddenSize) != 0 ||
-            write_exact(f, net->Wc[i], sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Wo[i], sizeof(double)*net->hiddenSize) != 0) {
-            fclose(f); 
-            return -1;
-        }
-    }
-
-    if (write_exact(f, net->Bf, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Bi, sizeof(double)*net->hiddenSize) != 0 ||
-        write_exact(f, net->Bc, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Bo, sizeof(double)*net->hiddenSize) != 0) {
-        fclose(f);
-        return -1;
-    }
-
-    for (int j=0;j<net->hiddenSize;j++) {
-        if (write_exact(f, net->Wout[j], sizeof(double)*net->outputSize) != 0) {
-            fclose(f); 
-            return -1;
-        }
+    for (int i=0; i<(int)hiddenSize; i++) {
+        fwrite(net->Wout[i], sizeof(double), outputSize, f);
+        fwrite(net->Wout_m[i], sizeof(double), outputSize, f);
+        fwrite(net->Wout_v[i], sizeof(double), outputSize, f);
     }
 
-    if (write_exact(f, net->Bout, sizeof(double)*net->outputSize) != 0 || write_exact(f, net->hiddenState, sizeof(double)*net->hiddenSize) != 0 || 
-        write_exact(f, net->cellState, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, &net->adam_t, sizeof(net->adam_t)) != 0) {
-        fclose(f);
-        return -1;
-    }
+    fwrite(net->Bout, sizeof(double), outputSize, f);
+    fwrite(net->Bout_m, sizeof(double), outputSize, f);
+    fwrite(net->Bout_v, sizeof(double), outputSize, f);
 
-    if (write_exact(f, net->Wv, sizeof(double)*net->hiddenSize) != 0 ||
-        write_exact(f, &net->Bv, sizeof(double)) != 0) {
-        fclose(f);
-        return -1;
-    }
+    fwrite(net->hiddenState, sizeof(double), hiddenSize, f);
+    fwrite(net->cellState, sizeof(double), hiddenSize, f);
 
-    for (int a=0; a<Z; a++) {
-        if (write_exact(f, net->Wf_m[a], sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Wf_v[a], sizeof(double)*net->hiddenSize) != 0 ||
-            write_exact(f, net->Wi_m[a], sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Wi_v[a], sizeof(double)*net->hiddenSize) != 0 ||
-            write_exact(f, net->Wc_m[a], sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Wc_v[a], sizeof(double)*net->hiddenSize) != 0 ||
-            write_exact(f, net->Wo_m[a], sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Wo_v[a], sizeof(double)*net->hiddenSize) != 0) {
-            fclose(f);
-            return -1;
-        }
-    }
+    fwrite(&net->adam_t, sizeof(net->adam_t), 1, f);
 
-    if (write_exact(f, net->Bf_m, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Bf_v, sizeof(double)*net->hiddenSize) != 0 ||
-        write_exact(f, net->Bi_m, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Bi_v, sizeof(double)*net->hiddenSize) != 0 ||
-        write_exact(f, net->Bc_m, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Bc_v, sizeof(double)*net->hiddenSize) != 0 ||
-        write_exact(f, net->Bo_m, sizeof(double)*net->hiddenSize) != 0 || write_exact(f, net->Bo_v, sizeof(double)*net->hiddenSize) != 0) {
-        fclose(f);
-        return -1;
-    }
+    fwrite(net->Wv, sizeof(double), hiddenSize, f);
+    fwrite(net->Wv_m, sizeof(double), hiddenSize, f);
+    fwrite(net->Wv_v, sizeof(double), hiddenSize, f);
 
-    if (write_exact(f, net->Wv_m, sizeof(double)*net->hiddenSize) != 0 ||
-        write_exact(f, net->Wv_v, sizeof(double)*net->hiddenSize) != 0 ||
-        write_exact(f, &net->Bv_m, sizeof(double)) != 0 ||
-        write_exact(f, &net->Bv_v, sizeof(double)) != 0) {
-        fclose(f);
-        return -1;
-    }
-
-    for (int j=0;j<net->hiddenSize;j++) { 
-        if (write_exact(f, net->Wout_m[j], sizeof(double)*net->outputSize) != 0 || write_exact(f, net->Wout_v[j], sizeof(double)*net->outputSize) != 0) {
-            fclose(f); 
-            return -1;
-        }
-    }
-    if (write_exact(f, net->Bout_m, sizeof(double)*net->outputSize) != 0 || write_exact(f, net->Bout_v, sizeof(double)*net->outputSize) != 0) {
-        fclose(f);
-        return -1;
-    }
+    fwrite(&net->Bv, sizeof(double), 1, f);
+    fwrite(&net->Bv_m, sizeof(double), 1, f);
+    fwrite(&net->Bv_v, sizeof(double), 1, f);
 
     fclose(f);
     return 0;
 }
 
-LSTM* loadLSTM(const char* path, uint64_t* episodes, uint64_t* rng_seed) {
+LSTM* loadLSTM(const char* path, uint64_t* episodes, uint64_t* seed) {
     FILE* f = fopen(path, "rb");
     if (!f) return NULL;
 
-    char magic[8];
+    char magic[sizeof(CKPT_MAGIC)];
     uint32_t version;
     uint32_t inputSize;
     uint32_t hiddenSize;
     uint32_t outputSize;
-    uint64_t episode_nmb;
-    uint64_t seed;
 
-    if (read_exact(f, magic, sizeof(magic)) != 0 || memcmp(magic, CKPT_MAGIC, 8) != 0 || 
-        read_exact(f, &version, sizeof(version)) != 0 || version != CKPT_VERSION || 
-        read_exact(f, &inputSize, sizeof(inputSize)) != 0 || read_exact(f, &hiddenSize, sizeof(hiddenSize)) != 0 || 
-        read_exact(f, &outputSize, sizeof(outputSize)) != 0 || read_exact(f, &episode_nmb, sizeof(episode_nmb)) != 0 || 
-        read_exact(f, &seed, sizeof(seed)) != 0) { 
-        fclose(f); 
-        return NULL; 
-    }
+    fread(magic, sizeof(magic), 1, f);
+    fread(&version, sizeof(version), 1, f);
+    fread(&inputSize, sizeof(inputSize), 1, f);
+    fread(&hiddenSize, sizeof(hiddenSize), 1, f);
+    fread(&outputSize, sizeof(outputSize), 1, f);
+    fread(episodes, sizeof(*episodes), 1, f);
+    fread(seed, sizeof(*seed), 1, f);
 
     LSTM* net = initLSTM((int)inputSize, (int)hiddenSize, (int)outputSize);
 
-    int Z = net->inputSize + net->hiddenSize;
-    for (int i = 0; i < Z; i++) {
-        if (read_exact(f, net->Wf[i], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wi[i], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wc[i], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wo[i], sizeof(double)*net->hiddenSize) != 0) {
-            fclose(f); freeLSTM(net); return NULL;
-        }
+    int Z = (int)inputSize + (int)hiddenSize;
+
+    for (int i=0; i<Z; i++) {
+        fread(net->Wf[i], sizeof(double), hiddenSize, f);
+        fread(net->Wf_m[i], sizeof(double), hiddenSize, f);
+        fread(net->Wf_v[i], sizeof(double), hiddenSize, f);
+        fread(net->Wi[i], sizeof(double), hiddenSize, f);
+        fread(net->Wi_m[i], sizeof(double), hiddenSize, f);
+        fread(net->Wi_v[i], sizeof(double), hiddenSize, f);
+        fread(net->Wc[i], sizeof(double), hiddenSize, f);
+        fread(net->Wc_m[i], sizeof(double), hiddenSize, f);
+        fread(net->Wc_v[i], sizeof(double), hiddenSize, f);
+        fread(net->Wo[i], sizeof(double), hiddenSize, f);
+        fread(net->Wo_m[i], sizeof(double), hiddenSize, f);
+        fread(net->Wo_v[i], sizeof(double), hiddenSize, f);
     }
 
-    if (read_exact(f, net->Bf, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bi, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bc, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bo, sizeof(double)*net->hiddenSize) != 0) {
-        fclose(f); freeLSTM(net); return NULL;
+    fread(net->Bf, sizeof(double), hiddenSize, f);
+    fread(net->Bf_m, sizeof(double), hiddenSize, f);
+    fread(net->Bf_v, sizeof(double), hiddenSize, f);
+    fread(net->Bi, sizeof(double), hiddenSize, f);
+    fread(net->Bi_m, sizeof(double), hiddenSize, f);
+    fread(net->Bi_v, sizeof(double), hiddenSize, f);
+    fread(net->Bc, sizeof(double), hiddenSize, f);
+    fread(net->Bc_m, sizeof(double), hiddenSize, f);
+    fread(net->Bc_v, sizeof(double), hiddenSize, f);
+    fread(net->Bo, sizeof(double), hiddenSize, f);
+    fread(net->Bo_m, sizeof(double), hiddenSize, f);
+    fread(net->Bo_v, sizeof(double), hiddenSize, f);
+
+    for (int i=0; i<(int)hiddenSize; i++) {
+        fread(net->Wout[i], sizeof(double), outputSize, f);
+        fread(net->Wout_m[i], sizeof(double), outputSize, f);
+        fread(net->Wout_v[i], sizeof(double), outputSize, f);
     }
 
-    for (int j = 0; j < net->hiddenSize; j++) {
-        if (read_exact(f, net->Wout[j], sizeof(double)*net->outputSize) != 0) {
-            fclose(f); freeLSTM(net); return NULL;
-        }
-    }
+    fread(net->Bout, sizeof(double), outputSize, f);
+    fread(net->Bout_m, sizeof(double), outputSize, f);
+    fread(net->Bout_v, sizeof(double), outputSize, f);
 
-    if (read_exact(f, net->Bout, sizeof(double)*net->outputSize) != 0 ||
-        read_exact(f, net->hiddenState, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->cellState, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, &net->adam_t, sizeof(net->adam_t)) != 0) {
-        fclose(f); freeLSTM(net); return NULL;
-    }
+    fread(net->hiddenState, sizeof(double), hiddenSize, f);
+    fread(net->cellState, sizeof(double), hiddenSize, f);
 
-    if (read_exact(f, net->Wv, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, &net->Bv, sizeof(double)) != 0) {
-        fclose(f); freeLSTM(net); return NULL;
-    }
+    fread(&net->adam_t, sizeof(net->adam_t), 1, f);
 
-    for (int a = 0; a < Z; a++) {
-        if (read_exact(f, net->Wf_m[a], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wf_v[a], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wi_m[a], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wi_v[a], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wc_m[a], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wc_v[a], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wo_m[a], sizeof(double)*net->hiddenSize) != 0 ||
-            read_exact(f, net->Wo_v[a], sizeof(double)*net->hiddenSize) != 0) {
-            fclose(f); freeLSTM(net); return NULL;
-        }
-    }
+    fread(net->Wv, sizeof(double), hiddenSize, f);
+    fread(net->Wv_m, sizeof(double), hiddenSize, f);
+    fread(net->Wv_v, sizeof(double), hiddenSize, f);
 
-    if (read_exact(f, net->Bf_m, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bf_v, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bi_m, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bi_v, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bc_m, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bc_v, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bo_m, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Bo_v, sizeof(double)*net->hiddenSize) != 0) {
-        fclose(f); freeLSTM(net); return NULL;
-    }
-
-    if (read_exact(f, net->Wv_m, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, net->Wv_v, sizeof(double)*net->hiddenSize) != 0 ||
-        read_exact(f, &net->Bv_m, sizeof(double)) != 0 ||
-        read_exact(f, &net->Bv_v, sizeof(double)) != 0) {
-        fclose(f); freeLSTM(net); return NULL;
-    }
-
-    for (int j = 0; j < net->hiddenSize; j++) {
-        if (read_exact(f, net->Wout_m[j], sizeof(double)*net->outputSize) != 0 ||
-            read_exact(f, net->Wout_v[j], sizeof(double)*net->outputSize) != 0) {
-            fclose(f); freeLSTM(net); return NULL;
-        }
-    }
-
-    if (read_exact(f, net->Bout_m, sizeof(double)*net->outputSize) != 0 ||
-        read_exact(f, net->Bout_v, sizeof(double)*net->outputSize) != 0) {
-        fclose(f); freeLSTM(net); return NULL;
-    }
+    fread(&net->Bv, sizeof(double), 1, f);
+    fread(&net->Bv_m, sizeof(double), 1, f);
+    fread(&net->Bv_v, sizeof(double), 1, f);
 
     fclose(f);
-
-    if (episodes) *episodes = episode_nmb;
-    if (rng_seed) *rng_seed = seed;
-
     return net;
 }

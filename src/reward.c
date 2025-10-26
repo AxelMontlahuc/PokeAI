@@ -59,11 +59,11 @@ double pnl(state s, state s_next) {
             pnl += 2.0 * (double)(s_next.team[i].level - s.team[i].level);
         }
 
-        if (s.team[i].hp == 0 && s_next.team[i].hp > 0) {
+        if (s.team[i].HP == 0 && s_next.team[i].HP > 0) {
             pnl += 1.0;
         }
 
-        if (s.team[i].hp > 0 && s_next.team[i].hp == 0) {
+        if (s.team[i].HP > 0 && s_next.team[i].HP == 0) {
             pnl -= 1.0;
         }
     }
