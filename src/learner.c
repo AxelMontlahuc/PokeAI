@@ -281,6 +281,30 @@ int main() {
             long clip_count = 0;
             double surr_sum = 0.0;
 
+            double ev = NAN;
+            double vloss_mean = NAN;
+            if (A_per_traj && R_per_traj) {
+                double sum_R = 0.0, sum_R2 = 0.0, sum_err2 = 0.0;
+                int nR = 0;
+                for (int i = 0; i < total_traj; i++) {
+                    for (int t = 0; t < steps; t++) {
+                        double R = R_per_traj[i][t];
+                        double V = flat[i]->values[t];
+                        double err = V - R;
+                        sum_R += R;
+                        sum_R2 += R * R;
+                        sum_err2 += err * err;
+                        nR++;
+                    }
+                }
+                if (nR > 0) {
+                    double mean_R = sum_R / (double)nR;
+                    double var_R = fmax(0.0, (sum_R2 / (double)nR) - (mean_R * mean_R));
+                    vloss_mean = sum_err2 / (double)nR;
+                    ev = (var_R > 0.0) ? (1.0 - (sum_err2 / ((double)nR * var_R))) : NAN;
+                }
+            }
+
             int flat_idx = 0;
             double* input_vec = malloc(INPUT_SIZE * sizeof(double));
             assert(input_vec != NULL);
@@ -354,8 +378,12 @@ int main() {
             } else {
                 printf("            : surrogate(unclipped)=n/a  adv= n/a\n");
             }
-
-            printf("            : value_loss=n/a  explained_var=n/a\n\n");
+            
+            if (!isnan(vloss_mean) && !isnan(ev)) {
+                printf("            : value_loss=%-9.6f  explained_var=%-7.4f\n\n", vloss_mean, ev);
+            } else {
+                printf("            : value_loss=n/a  explained_var=n/a\n\n");
+            }
         } else {
             printf("  PPO diag  : n/a (no steps)\n\n");
         }
