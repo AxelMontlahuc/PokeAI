@@ -104,7 +104,7 @@ La méthode la plus commune pour le calcul d'avantage est le GAE (Generalized Ad
 
 Voici l'implémentation du GAE dans `rewards.c` : 
 ```c
-void compute_gae(
+void computeGAE(
     const double* rewards,
     const double* values,
     int steps,

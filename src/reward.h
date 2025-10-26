@@ -12,12 +12,12 @@
 
 double pnl(state s, state s_next);
 void normPNL(double* G, int n);
-void compute_gae(
-	const double* rewards,
-	const double* values,
+void computeGAE(
+	double* rewards,
+	double* values,
 	int steps,
 	double gamma,
-	double gae_lambda,
+	double lambda,
 	double* out_advantages,
 	double* out_returns
 );

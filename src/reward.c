@@ -68,7 +68,7 @@ double pnl(state s, state s_next) {
         }
     }
 
-    if (s.enemy[0] > 0 && s_next.enemy[0] == 0) {
+    if (s.enemy[1] > 0 && s_next.enemy[1] == 0) {
         pnl += 2.0;
     }
 
@@ -80,33 +80,30 @@ void normPNL(double* G, int n) {
     for (int i = 0; i < n; i++) mean += G[i];
     mean /= (double)n;
 
-    double var = 0.0;
+    double variance = 0.0;
     for (int i = 0; i < n; i++) {
         double d = G[i] - mean;
-        var += d * d;
+        variance += d * d;
     }
-    var /= (double)n;
-    double std = sqrt(var) + STD_EPS;
+    variance /= (double)n;
 
-    for (int i = 0; i < n; i++) G[i] = (G[i] - mean) / std;
+    double std_deviation = sqrt(variance) + STD_EPS;
+
+    for (int i = 0; i < n; i++) G[i] = (G[i] - mean) / std_deviation;
 }
 
-void compute_gae(
-    const double* rewards,
-    const double* values,
-    int steps,
-    double gamma,
-    double gae_lambda,
-    double* out_advantages,
-    double* out_returns
-) {
+void computeGAE(double* rewards, double* values, int steps, double gamma, double lambda, double* out_advantages, double* out_returns) {
     double gae = 0.0;
-    for (int t = steps - 1; t >= 0; t--) {
-        double v_t = values[t];
-        double v_tp1 = (t + 1 < steps) ? values[t + 1] : 0.0;
-        double delta = rewards[t] + gamma * v_tp1 - v_t;
-        gae = delta + gamma * gae_lambda * gae;
+
+    for (int t=steps-1; t>=0; t--) {
+        double v = values[t];
+        double v_next = (t + 1 < steps) ? values[t+1] : 0.0;
+
+        double delta = rewards[t] + gamma * v_next - v;
+
+        gae = delta + gamma * lambda * gae;
+        
         out_advantages[t] = gae;
-        out_returns[t] = out_advantages[t] + v_t;
+        out_returns[t] = out_advantages[t] + v;
     }
 }

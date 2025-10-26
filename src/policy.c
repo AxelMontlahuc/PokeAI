@@ -166,7 +166,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
         As[b] = malloc(T * sizeof(double));
         Rs[b] = malloc(T * sizeof(double));
         assert(As[b] && Rs[b]);
-        compute_gae(trajectories[b]->rewards, trajectories[b]->values, T, GAMMA_DISCOUNT, GAE_LAMBDA, As[b], Rs[b]);
+        computeGAE(trajectories[b]->rewards, trajectories[b]->values, T, GAMMA_DISCOUNT, GAE_LAMBDA, As[b], Rs[b]);
         for (int t = 0; t < T; t++) allA[cur++] = As[b][t];
     }
 
