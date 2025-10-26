@@ -7,6 +7,8 @@
 #include <assert.h>
 #include <math.h>
 
+#include "constants.h"
+#include "state.h"
 #include "reward.h"
 
 #define typeshit typedef

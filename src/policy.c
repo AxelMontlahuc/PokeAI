@@ -1,6 +1,4 @@
 #include "policy.h"
-#include "state.h"
-#include "constants.h"
 
 double xavierInitialization(double fanIn, double fanOut) {
     return (2.0*((double)rand() / (double)RAND_MAX)-1.0) * sqrt(6.0 / (fanIn + fanOut));
@@ -22,21 +20,41 @@ LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize) {
     network->cellState = calloc(hiddenSize, sizeof(double));
     network->logits = calloc(network->outputSize, sizeof(double));
     network->probs = calloc(network->outputSize, sizeof(double));
-    network->last_value = 0.0;
     assert(network->hiddenState != NULL && network->cellState != NULL && network->logits != NULL && network->probs != NULL);
 
-    network->Wf = malloc((inputSize + hiddenSize) * sizeof(double*));
-    network->Wi = malloc((inputSize + hiddenSize) * sizeof(double*));
-    network->Wc = malloc((inputSize + hiddenSize) * sizeof(double*));
-    network->Wo = malloc((inputSize + hiddenSize) * sizeof(double*));
-    assert(network->Wf != NULL && network->Wi != NULL && network->Wc != NULL && network->Wo != NULL);
-    
-    for (int i=0; i<(inputSize + hiddenSize); i++) {
+    network->last_value = 0.0;
+    network->adam_t = 0;
+
+    int Z = inputSize + hiddenSize;
+
+    network->Wf = malloc(Z * sizeof(double*));
+    network->Wf_m = malloc(Z * sizeof(double*));
+    network->Wf_v = malloc(Z * sizeof(double*));
+    network->Wi = malloc(Z * sizeof(double*));
+    network->Wi_m = malloc(Z * sizeof(double*));
+    network->Wi_v = malloc(Z * sizeof(double*));
+    network->Wc = malloc(Z * sizeof(double*));
+    network->Wc_m = malloc(Z * sizeof(double*));
+    network->Wc_v = malloc(Z * sizeof(double*));
+    network->Wo = malloc(Z * sizeof(double*));
+    network->Wo_m = malloc(Z * sizeof(double*));
+    network->Wo_v = malloc(Z * sizeof(double*));
+    assert(network->Wf != NULL && network->Wi != NULL && network->Wc != NULL && network->Wo != NULL && network->Wf_m && network->Wf_v && network->Wi_m && network->Wi_v && network->Wc_m && network->Wc_v && network->Wo_m && network->Wo_v);
+
+    for (int i=0; i<Z; i++) {
         network->Wf[i] = malloc(hiddenSize * sizeof(double));
+        network->Wf_m[i] = calloc(hiddenSize, sizeof(double));
+        network->Wf_v[i] = calloc(hiddenSize, sizeof(double));
         network->Wi[i] = malloc(hiddenSize * sizeof(double));
+        network->Wi_m[i] = calloc(hiddenSize, sizeof(double));
+        network->Wi_v[i] = calloc(hiddenSize, sizeof(double));
         network->Wc[i] = malloc(hiddenSize * sizeof(double));
+        network->Wc_m[i] = calloc(hiddenSize, sizeof(double));
+        network->Wc_v[i] = calloc(hiddenSize, sizeof(double));
         network->Wo[i] = malloc(hiddenSize * sizeof(double));
-        assert(network->Wf[i] != NULL && network->Wi[i] != NULL && network->Wc[i] != NULL && network->Wo[i] != NULL);
+        network->Wo_m[i] = calloc(hiddenSize, sizeof(double));
+        network->Wo_v[i] = calloc(hiddenSize, sizeof(double));
+        assert(network->Wf[i] != NULL && network->Wi[i] != NULL && network->Wc[i] != NULL && network->Wo[i] != NULL && network->Wf_m[i] && network->Wf_v[i] && network->Wi_m[i] && network->Wi_v[i] && network->Wc_m[i] && network->Wc_v[i] && network->Wo_m[i] && network->Wo_v[i]);
 
         for (int j=0; j<hiddenSize; j++) {
             network->Wf[i][j] = xavierInitialization(inputSize, hiddenSize);
@@ -46,87 +64,51 @@ LSTM* initLSTM(int inputSize, int hiddenSize, int outputSize) {
         }
     }
 
-    network->Bf = malloc(hiddenSize * sizeof(double));
-    network->Bi = malloc(hiddenSize * sizeof(double));
-    network->Bc = malloc(hiddenSize * sizeof(double));
-    network->Bo = malloc(hiddenSize * sizeof(double));
-    assert(network->Bf != NULL && network->Bi != NULL && network->Bc != NULL && network->Bo != NULL);
+    network->Bf = calloc(hiddenSize, sizeof(double));
+    network->Bf_m = calloc(hiddenSize, sizeof(double));
+    network->Bf_v = calloc(hiddenSize, sizeof(double));
+    network->Bi = calloc(hiddenSize, sizeof(double));
+    network->Bi_m = calloc(hiddenSize, sizeof(double));
+    network->Bi_v = calloc(hiddenSize, sizeof(double));
+    network->Bc = calloc(hiddenSize, sizeof(double));
+    network->Bc_m = calloc(hiddenSize, sizeof(double));
+    network->Bc_v = calloc(hiddenSize, sizeof(double));
+    network->Bo = calloc(hiddenSize, sizeof(double));
+    network->Bo_m = calloc(hiddenSize, sizeof(double));
+    network->Bo_v = calloc(hiddenSize, sizeof(double));
+    assert(network->Bf != NULL && network->Bi != NULL && network->Bc != NULL && network->Bo != NULL && network->Bf_m != NULL && network->Bf_v != NULL && network->Bi_m != NULL && network->Bi_v != NULL && network->Bc_m != NULL && network->Bc_v != NULL && network->Bo_m != NULL && network->Bo_v != NULL);
 
-    for (int i=0; i<hiddenSize; i++) {
-        network->Bf[i] = 1.0;
-        network->Bi[i] = 0.0;
-        network->Bc[i] = 0.0;
-        network->Bo[i] = 0.0;
-    }
+    for (int i=0; i<hiddenSize; i++) network->Bf[i] = 1.0;
 
-    network->Wout = malloc(network->hiddenSize * sizeof(double*));
-    assert(network->Wout != NULL);
+    network->Wout = malloc(hiddenSize * sizeof(double*));
+    network->Wout_m = malloc(hiddenSize * sizeof(double*));
+    network->Wout_v = malloc(hiddenSize * sizeof(double*));
+    assert(network->Wout != NULL && network->Wout_m != NULL && network->Wout_v != NULL);
+
     for (int i=0; i<network->hiddenSize; i++) {
-    network->Wout[i] = malloc(network->outputSize * sizeof(double));
-        assert(network->Wout[i] != NULL);
+        network->Wout[i] = malloc(network->outputSize * sizeof(double));
+        network->Wout_m[i] = calloc(network->outputSize, sizeof(double));
+        network->Wout_v[i] = calloc(network->outputSize, sizeof(double));
+        assert(network->Wout[i] != NULL && network->Wout_m[i] != NULL && network->Wout_v[i] != NULL);
+
         for (int j=0; j<network->outputSize; j++) {
             network->Wout[i][j] = xavierInitialization(network->hiddenSize, network->outputSize);
         }
     }
+
     network->Bout = calloc(network->outputSize, sizeof(double));
-    assert(network->Bout != NULL);
-
-    network->Wv = malloc(hiddenSize * sizeof(double));
-    assert(network->Wv != NULL);
-    for (int j = 0; j < hiddenSize; j++) network->Wv[j] = xavierInitialization(hiddenSize, 1);
-    network->Bv = 0.0;
-
-    network->adam_t = 0;
-
-    int Z = inputSize + hiddenSize;
-
-    network->Wf_m = malloc(Z * sizeof(double*));
-    network->Wf_v = malloc(Z * sizeof(double*));
-    network->Wi_m = malloc(Z * sizeof(double*));
-    network->Wi_v = malloc(Z * sizeof(double*));
-    network->Wc_m = malloc(Z * sizeof(double*));
-    network->Wc_v = malloc(Z * sizeof(double*));
-    network->Wo_m = malloc(Z * sizeof(double*));
-    network->Wo_v = malloc(Z * sizeof(double*));
-    assert(network->Wf_m && network->Wf_v && network->Wi_m && network->Wi_v && network->Wc_m && network->Wc_v && network->Wo_m && network->Wo_v);
-    
-    for (int a=0; a<Z; a++) {
-        network->Wf_m[a] = calloc(hiddenSize, sizeof(double));
-        network->Wf_v[a] = calloc(hiddenSize, sizeof(double));
-        network->Wi_m[a] = calloc(hiddenSize, sizeof(double));
-        network->Wi_v[a] = calloc(hiddenSize, sizeof(double));
-        network->Wc_m[a] = calloc(hiddenSize, sizeof(double));
-        network->Wc_v[a] = calloc(hiddenSize, sizeof(double));
-        network->Wo_m[a] = calloc(hiddenSize, sizeof(double));
-        network->Wo_v[a] = calloc(hiddenSize, sizeof(double));
-        assert(network->Wf_m[a] && network->Wf_v[a] && network->Wi_m[a] && network->Wi_v[a] && network->Wc_m[a] && network->Wc_v[a] && network->Wo_m[a] && network->Wo_v[a]);
-    }
-
-    network->Bf_m = calloc(hiddenSize, sizeof(double));
-    network->Bf_v = calloc(hiddenSize, sizeof(double));
-    network->Bi_m = calloc(hiddenSize, sizeof(double));
-    network->Bi_v = calloc(hiddenSize, sizeof(double));
-    network->Bc_m = calloc(hiddenSize, sizeof(double));
-    network->Bc_v = calloc(hiddenSize, sizeof(double));
-    network->Bo_m = calloc(hiddenSize, sizeof(double));
-    network->Bo_v = calloc(hiddenSize, sizeof(double));
-    assert(network->Bf_m && network->Bf_v && network->Bi_m && network->Bi_v && network->Bc_m && network->Bc_v && network->Bo_m && network->Bo_v);
-
-    network->Wout_m = malloc(network->hiddenSize * sizeof(double*));
-    network->Wout_v = malloc(network->hiddenSize * sizeof(double*));
-    assert(network->Wout_m && network->Wout_v);
-    for (int i=0; i<network->hiddenSize; i++) {
-        network->Wout_m[i] = calloc(network->outputSize, sizeof(double));
-        network->Wout_v[i] = calloc(network->outputSize, sizeof(double));
-        assert(network->Wout_m[i] && network->Wout_v[i]);
-    }
     network->Bout_m = calloc(network->outputSize, sizeof(double));
     network->Bout_v = calloc(network->outputSize, sizeof(double));
-    assert(network->Bout_m && network->Bout_v);
+    assert(network->Bout != NULL && network->Bout_m != NULL && network->Bout_v != NULL);
 
+    network->Wv = malloc(hiddenSize * sizeof(double));
     network->Wv_m = calloc(hiddenSize, sizeof(double));
     network->Wv_v = calloc(hiddenSize, sizeof(double));
-    assert(network->Wv_m && network->Wv_v);
+    assert(network->Wv != NULL && network->Wv_m != NULL && network->Wv_v != NULL);
+
+    for (int i = 0; i < hiddenSize; i++) network->Wv[i] = xavierInitialization(hiddenSize, 1);
+
+    network->Bv = 0.0;
     network->Bv_m = 0.0;
     network->Bv_v = 0.0;
 
@@ -141,68 +123,63 @@ void freeLSTM(LSTM* network) {
 
     for (int i=0; i<(network->inputSize + network->hiddenSize); i++) {
         free(network->Wf[i]);
+        free(network->Wf_m[i]);
+        free(network->Wf_v[i]);
         free(network->Wi[i]);
+        free(network->Wi_m[i]);
+        free(network->Wi_v[i]);
         free(network->Wc[i]);
+        free(network->Wc_m[i]);
+        free(network->Wc_v[i]);
         free(network->Wo[i]);
+        free(network->Wo_m[i]);
+        free(network->Wo_v[i]);
     }
 
     free(network->Wf);
-    free(network->Wi);
-    free(network->Wc);
-    free(network->Wo);
-
-    free(network->Bf);
-    free(network->Bi);
-    free(network->Bc);
-    free(network->Bo);
-
-    for (int i=0; i<network->hiddenSize; i++) {
-        free(network->Wout[i]);
-    }
-    free(network->Wout);
-    free(network->Bout);
-    free(network->Wv);
-
-    int Z = network->inputSize + network->hiddenSize;
-    for (int a=0; a<Z; a++) {
-        free(network->Wf_m[a]);
-        free(network->Wf_v[a]);
-        free(network->Wi_m[a]);
-        free(network->Wi_v[a]);
-        free(network->Wc_m[a]);
-        free(network->Wc_v[a]);
-        free(network->Wo_m[a]);
-        free(network->Wo_v[a]);
-    }
     free(network->Wf_m);
     free(network->Wf_v);
+    free(network->Wi);
     free(network->Wi_m);
     free(network->Wi_v);
+    free(network->Wc);
     free(network->Wc_m);
     free(network->Wc_v);
+    free(network->Wo);
     free(network->Wo_m);
     free(network->Wo_v);
 
+    free(network->Bf);
     free(network->Bf_m);
     free(network->Bf_v);
+    free(network->Bi);
     free(network->Bi_m);
     free(network->Bi_v);
+    free(network->Bc);
     free(network->Bc_m);
     free(network->Bc_v);
+    free(network->Bo);
     free(network->Bo_m);
     free(network->Bo_v);
 
     for (int i=0; i<network->hiddenSize; i++) {
+        free(network->Wout[i]);
         free(network->Wout_m[i]);
         free(network->Wout_v[i]);
     }
+
+    free(network->Wout);
     free(network->Wout_m);
     free(network->Wout_v);
+
+    free(network->Bout);
     free(network->Bout_m);
     free(network->Bout_v);
+
+    free(network->Wv);
     free(network->Wv_m);
     free(network->Wv_v);
-
+    
     free(network);
 }
 
