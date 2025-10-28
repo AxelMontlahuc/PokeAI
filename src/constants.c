@@ -3,12 +3,19 @@
 const int INPUT_SIZE = 6*8 + 4 + 3 + 2 + 2*32*32;
 const int HIDDEN_SIZE = 128;
 
-const char* const HOST_ADDR = "127.0.0.1";
-int PORT = 8888;
+int ID = 1;
 
 const char* const QUEUE_DIR = "queue";
 const char* const LOCKS_DIR = "locks";
 const char* const CHECKPOINT_PATH = "checkpoints/model-last.sav";
+
+const char* ROM_PATH = "/home/axel/Documents/Dev/PokeAI/ROM/pokemon.gba";
+const char* CORE_PATH = "/home/axel/Documents/Dev/libretro-super/dist/unix/mgba_libretro.so";
+const char* SCREEN_PATH_PREFIX = "/home/axel/Documents/Dev/PokeAI/screen/";
+char SCREEN_PATH[512] = "/home/axel/Documents/Dev/PokeAI/screen/1.bmp";
+const char* SAVESTATE_PATH = "/home/axel/Documents/Dev/PokeAI/ROM/start.sav";
+
+const int SPEED = 90;
 
 int WORKER_TRAJECTORIES = 64;
 int WORKER_STEPS = 128;

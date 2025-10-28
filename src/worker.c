@@ -19,13 +19,6 @@
 #include "serializer.h"
 #include "../gba/gba.h"
 
-const char* ROM_PATH = "/home/axel/Documents/Dev/PokeAI/ROM/pokemon.gba";
-const char* CORE_PATH = "/home/axel/Documents/Dev/libretro-super/dist/unix/mgba_libretro.so";
-const char* SCREEN_PATH = "/home/axel/Documents/Dev/PokeAI/screen/1.bmp";
-const char* SAVESTATE_PATH = "/home/axel/Documents/Dev/PokeAI/ROM/start.sav";
-
-const int SPEED = 120;
-
 static void ensure_dir(const char* path) {
 #ifdef _WIN32
     _mkdir(path);
@@ -78,7 +71,6 @@ trajectory* runTrajectory(LSTM* network, int steps, double temperature) {
         assert(traj->probs[i] != NULL);
         for (int k=0; k<ACTION_COUNT; k++) traj->probs[i][k] = probs[k];
         
-
         traj->actions[i] =  ACTIONS[chooseAction(traj->probs[i], ACTION_COUNT)];
         traj->values[i] = network->last_value;
 
@@ -98,7 +90,10 @@ trajectory* runTrajectory(LSTM* network, int steps, double temperature) {
 }
 
 int main(int argc, char** argv) {
-    if (argc >= 2) PORT = atoi(argv[1]);
+    if (argc >= 2) {
+        ID = atoi(argv[1]);
+    }
+    snprintf(SCREEN_PATH, sizeof(SCREEN_PATH), "%s%d.bmp", SCREEN_PATH_PREFIX, ID);
 
     ensure_dir("checkpoints");
     ensure_dir(QUEUE_DIR);
@@ -150,15 +145,15 @@ int main(int argc, char** argv) {
 
             char tmp_path[512], final_path[512];
 #ifdef _WIN32
-            snprintf(tmp_path, sizeof(tmp_path), "%s\\worker-%d-%06d.traj.tmp", QUEUE_DIR, PORT, file_seq);
-            snprintf(final_path, sizeof(final_path), "%s\\worker-%d-%06d.traj", QUEUE_DIR, PORT, file_seq);
+            snprintf(tmp_path, sizeof(tmp_path), "%s\\worker-%d-%06d.traj.tmp", QUEUE_DIR, ID, file_seq);
+            snprintf(final_path, sizeof(final_path), "%s\\worker-%d-%06d.traj", QUEUE_DIR, ID, file_seq);
 #else
-            snprintf(tmp_path, sizeof(tmp_path), "%s/worker-%d-%06d.traj.tmp", QUEUE_DIR, PORT, file_seq);
-            snprintf(final_path, sizeof(final_path), "%s/worker-%d-%06d.traj", QUEUE_DIR, PORT, file_seq);
+            snprintf(tmp_path, sizeof(tmp_path), "%s/worker-%d-%06d.traj.tmp", QUEUE_DIR, ID, file_seq);
+            snprintf(final_path, sizeof(final_path), "%s/worker-%d-%06d.traj", QUEUE_DIR, ID, file_seq);
 #endif
 
             if (write_batch_file(tmp_path, final_path, batch, WORKER_BATCH_SIZE, WORKER_STEPS, temperature) != 0) {
-                fprintf(stderr, "[Worker] Failed to write %s\n", final_path);
+                printf("[Worker] Failed to write %s\n", final_path);
             } else {
                 printf("[Worker] Enqueued %s\n", final_path);
             }
