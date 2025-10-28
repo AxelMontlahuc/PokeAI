@@ -1,5 +1,4 @@
 #include "policy.h"
-#include <string.h>
 
 double xavierInitialization(double fanIn, double fanOut) {
     return (2.0*((double)rand() / (double)RAND_MAX)-1.0) * sqrt(6.0 / (fanIn + fanOut));
@@ -522,7 +521,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             dc_next[j] = 0.0; 
         }
         for (int t = T - 1; t >= 0; t--) {
-            int actionIndex = actionToIndex(tr->actions[t]);
+            int actionIndex = tr->actions[t];
             double maxlog = -1e30;
 
             for (int k = 0; k < O; k++) {

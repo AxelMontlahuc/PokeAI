@@ -187,7 +187,7 @@ int main() {
         
         for (int i = 0; i < total_traj; i++) {
             for (int t = 0; t < steps; t++) {
-                int idx = actionToIndex(flat[i]->actions[t]);
+                int idx = flat[i]->actions[t];
                 if (idx >= 0 && idx < ACTION_COUNT) action_counts[idx]++;
             }
         }
@@ -329,7 +329,7 @@ int main() {
                     }
                     kl_sum += kl_t;
 
-                    int aidx = actionToIndex(flat[i]->actions[t]);
+                    int aidx = flat[i]->actions[t];
                     if (aidx >= 0 && aidx < ACTION_COUNT) {
                         double po_a = fmax(p_old[aidx], NUM_EPS);
                         double pn_a = fmax(p_new[aidx], NUM_EPS);

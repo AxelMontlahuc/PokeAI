@@ -24,7 +24,7 @@ int write_batch_file(const char* path_tmp, const char* path_final, trajectory** 
     for (int b = 0; b < batch_size; b++) {
         trajectory* t = batch[b];
         for (int i = 0; i < steps; i++) {
-            uint16_t action = (uint16_t)actionToIndex(t->actions[i]);
+            uint16_t action = (uint16_t)t->actions[i];
             fwrite(&t->states[i], sizeof(state), 1, f);
             fwrite(t->probs[i], sizeof(double), ACTION_COUNT, f);
             fwrite(&t->values[i], sizeof(double), 1, f);
@@ -83,7 +83,7 @@ int read_batch_file(const char* path, trajectory*** out_batch, int* out_batch_si
             fread(&t->values[i], sizeof(double), 1, f);
             fread(&action, sizeof(uint16_t), 1, f);
             fread(&t->rewards[i], sizeof(double), 1, f);
-            t->actions[i] = indexToAction((int)action);
+            t->actions[i] = (int)action;
         }
         batch[b] = t;
     }
