@@ -3,6 +3,7 @@ bin
 build
 checkpoints
 locks
+logs
 queue
 ROM
 screen
