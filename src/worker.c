@@ -17,9 +17,7 @@
 #include "constants.h"
 #include "checkpoint.h"
 #include "serializer.h"
-
-#include "../mGBA-interface/include/mgba_connection.h"
-#include "../mGBA-interface/include/mgba_controller.h"
+#include "../gba/gba.h"
 
 static void ensure_dir(const char* path) {
 #ifdef _WIN32
@@ -29,9 +27,8 @@ static void ensure_dir(const char* path) {
 #endif
 }
 
-static const MGBAButton ACTIONS[ACTION_COUNT] = {
-    MGBA_BUTTON_UP, MGBA_BUTTON_DOWN, MGBA_BUTTON_LEFT, MGBA_BUTTON_RIGHT,
-    MGBA_BUTTON_A, MGBA_BUTTON_B
+static const int ACTIONS[ACTION_COUNT] = {
+    0, 1, 2, 3, 4, 5 // UP, DOWN, LEFT, RIGHT, A, B
 };
 
 static int chooseAction(double* p, int n) {
@@ -44,7 +41,16 @@ static int chooseAction(double* p, int n) {
     return n - 1;
 }
 
-trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double temperature) {
+void startProcedure() {
+    gba_run(300);
+    for (int i=0; i<100; i++) {
+        gba_button(4);
+        gba_run(SPEED);
+    }
+    gba_screen(SCREEN_PATH);
+}
+
+trajectory* runTrajectory(LSTM* network, int steps, double temperature) {
     trajectory* traj = initTrajectory(steps);
     assert(traj != NULL);
 
@@ -53,44 +59,44 @@ trajectory* runTrajectory(MGBAConnection conn, LSTM* network, int steps, double 
         network->cellState[j] = 0.0;
     }
 
-    for (int i=0; i<steps; i++) {
-        traj->states[i] = fetchState(conn);
+    double* input_vec = malloc(INPUT_SIZE * sizeof(double));
+    assert(input_vec != NULL);
 
-        double* input_vec = convertState(traj->states[i]);
+    for (int i=0; i<steps; i++) {
+        traj->states[i] = fetchState();
+        convertState(traj->states[i], input_vec);
         double* probs = forward(network, input_vec, temperature);
 
         traj->probs[i] = malloc(ACTION_COUNT * sizeof(double));
         assert(traj->probs[i] != NULL);
         for (int k=0; k<ACTION_COUNT; k++) traj->probs[i][k] = probs[k];
         
-
         traj->actions[i] =  ACTIONS[chooseAction(traj->probs[i], ACTION_COUNT)];
         traj->values[i] = network->last_value;
 
-        mgba_press_button(&conn, traj->actions[i], BUTTON_PRESS_MS);
+        gba_run(SPEED);
 
-        state s_next = fetchState(conn);
+        gba_button(traj->actions[i]);
+        gba_screen(SCREEN_PATH);
+
+        state s_next = fetchState();
         traj->rewards[i] = pnl(traj->states[i], s_next);
 
-        free(input_vec);
     }
+
+    free(input_vec);
 
     return traj;
 }
 
 int main(int argc, char** argv) {
-    if (argc >= 2) PORT = atoi(argv[1]);
+    if (argc >= 2) {
+        ID = atoi(argv[1]);
+    }
+    snprintf(SCREEN_PATH, sizeof(SCREEN_PATH), "%s%d.bmp", SCREEN_PATH_PREFIX, ID);
 
     ensure_dir("checkpoints");
     ensure_dir(QUEUE_DIR);
-
-    MGBAConnection conn;
-    if (mgba_connect(&conn, HOST_ADDR, PORT) == 0) {
-        printf("[Worker] Connected to mGBA %s:%d\n", HOST_ADDR, PORT);
-    } else {
-        printf("[Worker] Failed to connect mGBA %s:%d\n", HOST_ADDR, PORT);
-        return 1;
-    }
 
     unsigned int seed = (unsigned int)time(NULL);
     srand(seed);
@@ -105,6 +111,8 @@ int main(int argc, char** argv) {
     double temperature = TEMP_MIN;
 
     int file_seq = 0;
+
+    (void)gba_create(CORE_PATH, ROM_PATH);
 
     while (1) {
         uint64_t ep_tmp = 0ULL;
@@ -121,7 +129,9 @@ int main(int argc, char** argv) {
             printf("[Worker] Reloaded checkpoint (episode=%d)\n", episode);
         }
 
-        mgba_reset(&conn);
+        gba_reset();
+        startProcedure();
+        resetFlags();
 
         temperature = fmax(TEMP_MIN, TEMP_MAX * pow(TEMP_DECAY, (double)episode));
 
@@ -130,20 +140,20 @@ int main(int argc, char** argv) {
             assert(batch != NULL);
 
             for (int b=0; b<WORKER_BATCH_SIZE; b++) {
-                batch[b] = runTrajectory(conn, network, WORKER_STEPS, temperature);
+                batch[b] = runTrajectory(network, WORKER_STEPS, temperature);
             }
 
             char tmp_path[512], final_path[512];
 #ifdef _WIN32
-            snprintf(tmp_path, sizeof(tmp_path), "%s\\worker-%d-%06d.traj.tmp", QUEUE_DIR, PORT, file_seq);
-            snprintf(final_path, sizeof(final_path), "%s\\worker-%d-%06d.traj", QUEUE_DIR, PORT, file_seq);
+            snprintf(tmp_path, sizeof(tmp_path), "%s\\worker-%d-%06d.traj.tmp", QUEUE_DIR, ID, file_seq);
+            snprintf(final_path, sizeof(final_path), "%s\\worker-%d-%06d.traj", QUEUE_DIR, ID, file_seq);
 #else
-            snprintf(tmp_path, sizeof(tmp_path), "%s/worker-%d-%06d.traj.tmp", QUEUE_DIR, PORT, file_seq);
-            snprintf(final_path, sizeof(final_path), "%s/worker-%d-%06d.traj", QUEUE_DIR, PORT, file_seq);
+            snprintf(tmp_path, sizeof(tmp_path), "%s/worker-%d-%06d.traj.tmp", QUEUE_DIR, ID, file_seq);
+            snprintf(final_path, sizeof(final_path), "%s/worker-%d-%06d.traj", QUEUE_DIR, ID, file_seq);
 #endif
 
             if (write_batch_file(tmp_path, final_path, batch, WORKER_BATCH_SIZE, WORKER_STEPS, temperature) != 0) {
-                fprintf(stderr, "[Worker] Failed to write %s\n", final_path);
+                printf("[Worker] Failed to write %s\n", final_path);
             } else {
                 printf("[Worker] Enqueued %s\n", final_path);
             }
@@ -157,6 +167,6 @@ int main(int argc, char** argv) {
     }
 
     freeLSTM(network);
-    mgba_disconnect(&conn);
+    gba_destroy();
     return 0;
 }

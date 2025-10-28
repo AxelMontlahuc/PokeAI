@@ -102,8 +102,18 @@ void computeGAE(double* rewards, double* values, int steps, double gamma, double
         double delta = rewards[t] + gamma * v_next - v;
 
         gae = delta + gamma * lambda * gae;
-        
+
         out_advantages[t] = gae;
         out_returns[t] = out_advantages[t] + v;
     }
+}
+
+void resetFlags() {
+    HOUSE_FLAG = false;
+    ROOM_FLAG = false;
+    CLOCK_FLAG = false;
+    OUTDOOR_FLAG = false;
+    OPP_HOUSE_FLAG = false;
+    OPP_ROOM_FLAG = false;
+    ROUTE_101_FLAG = false;
 }

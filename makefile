@@ -1,7 +1,7 @@
 CC := gcc
 AR := ar
 CSTD := -std=c99
-CFLAGS := $(CSTD) -Wall -Wextra -O2 -Isrc -ImGBA-interface/include
+CFLAGS := $(CSTD) -Wall -Wextra -O3 -march=native -ffast-math -Isrc -Igba
 
 ifeq ($(OS),Windows_NT)
 	UNAME_S := Windows
@@ -10,7 +10,7 @@ else
 endif
 
 ifeq ($(UNAME_S),Linux)
-	LDFLAGS := -lm
+	LDFLAGS := -lm -ldl
 	EXE :=
 	MKDIR_P := mkdir -p
 	RM_RF := rm -rf
@@ -36,7 +36,8 @@ COMMON_SRC := \
 	src/constants.c \
 	src/checkpoint.c \
 	src/reward.c \
-	src/serializer.c
+	src/serializer.c \
+	gba/gba.c
 
 WORKER_SRC := \
 	src/worker.c \
@@ -51,14 +52,6 @@ LEARNER_SRC := \
 WORKER_OBJS := $(WORKER_SRC:%.c=$(BUILD_DIR)/%.o)
 LEARNER_OBJS := $(LEARNER_SRC:%.c=$(BUILD_DIR)/%.o)
 
-MGBA_SRC := \
-  mGBA-interface/src/mgba_connection.c \
-  mGBA-interface/src/mgba_controller.c \
-  mGBA-interface/src/mgba_intel.c
-
-MGBA_OBJS := $(MGBA_SRC:%.c=$(BUILD_DIR)/%.o)
-LIBMGBA := $(BUILD_DIR)/libmgba_controller.a
-
 WORKER_TARGET := $(BIN_DIR)/worker$(EXE)
 LEARNER_TARGET := $(BIN_DIR)/learner$(EXE)
 
@@ -68,23 +61,19 @@ all: $(WORKER_TARGET) $(LEARNER_TARGET)
 
 dirs:
 ifneq ($(UNAME_S),Windows)
-	@$(MKDIR_P) $(BUILD_DIR) $(BIN_DIR) $(BUILD_DIR)/src $(BUILD_DIR)/mGBA-interface $(BUILD_DIR)/mGBA-interface/src
+	@$(MKDIR_P) $(BUILD_DIR) $(BIN_DIR) $(BUILD_DIR)/src $(BUILD_DIR)/gba
 else
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)' | Out-Null"
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BIN_DIR)' | Out-Null"
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/src' | Out-Null"
-	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/mGBA-interface' | Out-Null"
-	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/mGBA-interface/src' | Out-Null"
+	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/gba' | Out-Null"
 endif
 
-$(WORKER_TARGET): dirs $(WORKER_OBJS) $(LIBMGBA)
-	$(CC) $(WORKER_OBJS) -o $@ $(LIBMGBA) $(LDFLAGS)
+$(WORKER_TARGET): dirs $(WORKER_OBJS)
+	$(CC) $(WORKER_OBJS) -o $@ $(LDFLAGS)
 
-$(LEARNER_TARGET): dirs $(LEARNER_OBJS) $(LIBMGBA)
-	$(CC) $(LEARNER_OBJS) -o $@ $(LIBMGBA) $(LDFLAGS)
-
-$(LIBMGBA): dirs $(MGBA_OBJS)
-	$(AR) rcs $@ $(filter %.o,$^)
+$(LEARNER_TARGET): dirs $(LEARNER_OBJS)
+	$(CC) $(LEARNER_OBJS) -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/%.o: %.c | dirs
 	$(CC) $(CFLAGS) -c $< -o $@

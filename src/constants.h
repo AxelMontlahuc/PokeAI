@@ -7,12 +7,19 @@
 extern const int INPUT_SIZE;
 extern const int HIDDEN_SIZE;
 
-extern const char* const HOST_ADDR;
-extern int PORT;
+extern int ID;
 
 extern const char* const QUEUE_DIR;
 extern const char* const LOCKS_DIR;
 extern const char* const CHECKPOINT_PATH;
+
+extern const char* ROM_PATH;
+extern const char* CORE_PATH;
+extern const char* SCREEN_PATH_PREFIX;
+extern char SCREEN_PATH[512];
+extern const char* SAVESTATE_PATH;
+
+extern const int SPEED;
 
 extern int WORKER_TRAJECTORIES;
 extern int WORKER_STEPS;

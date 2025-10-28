@@ -1,11 +1,11 @@
 #include "state.h"
 
-state fetchState(MGBAConnection conn) {
+state fetchState() {
     state s;
     
     int team_raw[6*8];
 
-    read_state(conn.sock, team_raw, s.enemy, s.PP, &s.zone, &s.clock, s.bg0, s.bg2);
+    gba_state(team_raw, s.enemy, s.PP, &s.zone, &s.clock, s.bg0, s.bg2);
 
     for (int i = 0; i < 6; i++) {
         int o = i * 8;
@@ -22,8 +22,7 @@ state fetchState(MGBAConnection conn) {
     return s;
 }
 
-double* convertState(state s) {
-    double* out = malloc((6*8 + 4 + 3 + 2 + 2*32*32) * sizeof(double));
+void convertState(state s, double* out) {
     for (int i=0; i<6; i++) {
         out[i*8 + 0] = (double)s.team[i].maxHP / 300.0;
         out[i*8 + 1] = (double)s.team[i].HP / 300.0;
@@ -55,8 +54,6 @@ double* convertState(state s) {
             out[6*8 + 9 + 32*32 + k*32 + l] = (double)s.bg2[k][l] / 2048.0 - 0.5;
         }
     }
-
-    return out;
 }
 
 trajectory* initTrajectory(int steps) {
@@ -64,7 +61,7 @@ trajectory* initTrajectory(int steps) {
     assert(traj != NULL);
 
     traj->states = malloc(steps * sizeof(state));
-    traj->actions = malloc(steps * sizeof(MGBAButton));
+    traj->actions = malloc(steps * sizeof(int));
     traj->rewards = malloc(steps * sizeof(double));
     traj->probs = malloc(steps * sizeof(double*));
     traj->values = malloc(steps * sizeof(double));

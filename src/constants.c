@@ -3,19 +3,26 @@
 const int INPUT_SIZE = 6*8 + 4 + 3 + 2 + 2*32*32;
 const int HIDDEN_SIZE = 128;
 
-const char* const HOST_ADDR = "127.0.0.1";
-int PORT = 8888;
+int ID = 1;
 
 const char* const QUEUE_DIR = "queue";
 const char* const LOCKS_DIR = "locks";
 const char* const CHECKPOINT_PATH = "checkpoints/model-last.sav";
 
+const char* ROM_PATH = "/home/axel/Documents/Dev/PokeAI/ROM/pokemon.gba";
+const char* CORE_PATH = "/home/axel/Documents/Dev/libretro-super/dist/unix/mgba_libretro.so";
+const char* SCREEN_PATH_PREFIX = "/home/axel/Documents/Dev/PokeAI/screen/";
+char SCREEN_PATH[512] = "/home/axel/Documents/Dev/PokeAI/screen/1.bmp";
+const char* SAVESTATE_PATH = "/home/axel/Documents/Dev/PokeAI/ROM/start.sav";
+
+const int SPEED = 90;
+
 int WORKER_TRAJECTORIES = 64;
-int WORKER_STEPS = 256;
+int WORKER_STEPS = 128;
 int WORKER_BATCH_SIZE = 8;
 int BUTTON_PRESS_MS = 50;
 
-double TEMP_MAX = 3.0;
+double TEMP_MAX = 2.0;
 double TEMP_MIN = 1.0;
 double TEMP_DECAY = 0.97;
 
@@ -35,9 +42,9 @@ double GAMMA_DISCOUNT = 0.90;
 double GAE_LAMBDA = 0.95;
 
 double ENTROPY_COEFF = 0.05;
-double VALUE_COEFF = 0.50;
+double VALUE_COEFF = 0.10;
 double VALUE_CLIP_EPS = 0.20;
-double GRAD_CLIP_NORM = 1.0;
+double GRAD_CLIP_NORM = 100.0;
 
 double ADAM_BETA1 = 0.9;
 double ADAM_BETA2 = 0.999;

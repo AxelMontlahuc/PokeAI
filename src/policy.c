@@ -348,51 +348,26 @@ static inline double clip_grad(double ratio, double advantage, double clip_eps) 
 }
 
 void backpropagation(LSTM* network, double learningRate, int steps, trajectory** trajectories, int batch_count, double temperature, BackpropStats* stats) {
-    int H = network->hiddenSize;
-    int I = network->inputSize;
-    int Z = I + H;
-    int O = network->outputSize;
-
-    int T = steps;
-    int totalSteps = batch_count * steps;
-
-    double** As = malloc(batch_count * sizeof(double*));
-    double** Rs = malloc(batch_count * sizeof(double*));
-    double* allA = malloc(totalSteps * sizeof(double));
-    assert(As != NULL && Rs != NULL && allA != NULL);
-
-    int cur = 0;
-    for (int b = 0; b < batch_count; b++) {
-        As[b] = malloc(T * sizeof(double));
-        Rs[b] = malloc(T * sizeof(double));
-        assert(As[b] != NULL && Rs[b] != NULL);
-
-        computeGAE(trajectories[b]->rewards, trajectories[b]->values, T, GAMMA_DISCOUNT, GAE_LAMBDA, As[b], Rs[b]);
-        for (int t = 0; t < T; t++) allA[cur++] = As[b][t];
-    }
-
-    normPNL(allA, totalSteps);
-
-    cur = 0;
-    for (int b = 0; b < batch_count; b++) {
-        for (int t = 0; t < T; t++) As[b][t] = allA[cur++];
-    }
+    const int T = steps;
+    const int I = network->inputSize;
+    const int H = network->hiddenSize;
+    const int O = network->outputSize;
+    const int Z = I + H;
 
     double** dWf = malloc(Z * sizeof(double*));
     double** dWi = malloc(Z * sizeof(double*));
     double** dWc = malloc(Z * sizeof(double*));
     double** dWo = malloc(Z * sizeof(double*));
-    double** dWout = malloc(H * sizeof(double*));
-    assert(dWf != NULL && dWi != NULL && dWc != NULL && dWo != NULL && dWout != NULL);
 
-    for (int a = 0; a < Z; a++) {
-        dWf[a] = calloc(H, sizeof(double));
-        dWi[a] = calloc(H, sizeof(double));
-        dWc[a] = calloc(H, sizeof(double));
-        dWo[a] = calloc(H, sizeof(double));
-        assert(dWf[a] != NULL && dWi[a] != NULL && dWc[a] != NULL && dWo[a] != NULL);
+    for (int i = 0; i < Z; i++) {
+        dWf[i] = calloc(H, sizeof(double));
+        dWi[i] = calloc(H, sizeof(double));
+        dWc[i] = calloc(H, sizeof(double));
+        dWo[i] = calloc(H, sizeof(double));
+        assert(dWf[i] != NULL && dWi[i] != NULL && dWc[i] != NULL && dWo[i] != NULL);
     }
 
+    double** dWout = malloc(H * sizeof(double*));
     for (int j = 0; j < H; j++) {
         dWout[j] = calloc(O, sizeof(double));
         assert(dWout[j] != NULL);
@@ -404,98 +379,149 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     double* dBo = calloc(H, sizeof(double));
     double* dBout = calloc(O, sizeof(double));
     double* dWv = calloc(H, sizeof(double));
+    double dBv = 0.0;
     assert(dBf != NULL && dBi != NULL && dBc != NULL && dBo != NULL && dBout != NULL && dWv != NULL);
 
-    double dBv = 0.0;
+    double** As = malloc(batch_count * sizeof(double*));
+    double** Rs = malloc(batch_count * sizeof(double*));
+    double* allA = malloc((size_t)batch_count * T * sizeof(double));
+    assert(As != NULL && Rs != NULL && allA != NULL);
+
+    int cursor = 0;
+    for (int b = 0; b < batch_count; b++) {
+        As[b] = malloc((size_t)T * sizeof(double));
+        Rs[b] = malloc((size_t)T * sizeof(double));
+        assert(As[b] != NULL && Rs[b] != NULL);
+
+        computeGAE(trajectories[b]->rewards, trajectories[b]->values, T, GAMMA_DISCOUNT, GAE_LAMBDA, As[b], Rs[b]);
+        for (int t = 0; t < T; t++) allA[cursor++] = As[b][t];
+    }
+    normPNL(allA, cursor);
+    
+    cursor = 0;
+    for (int b = 0; b < batch_count; b++) {
+        for (int t = 0; t < T; t++) As[b][t] = allA[cursor++];
+    }
+
+    double** x = malloc(T * sizeof(double*));
+    double** z = malloc(T * sizeof(double*));
+    double** f = malloc(T * sizeof(double*));
+    double** i = malloc(T * sizeof(double*));
+    double** g = malloc(T * sizeof(double*));
+    double** o = malloc(T * sizeof(double*));
+    double** c = malloc(T * sizeof(double*));
+    double** h = malloc(T * sizeof(double*));
+    double** cprev = malloc(T * sizeof(double*));
+    double** tanhC = malloc(T * sizeof(double*));
+    assert(x != NULL && z != NULL && f != NULL && i != NULL && g != NULL && o != NULL && c != NULL && h != NULL && cprev != NULL && tanhC != NULL);
+
+    double* x_block = malloc((size_t)T * I * sizeof(double));
+    double* z_block = malloc((size_t)T * Z * sizeof(double));
+    double* f_block = malloc((size_t)T * H * sizeof(double));
+    double* i_block = malloc((size_t)T * H * sizeof(double));
+    double* g_block = malloc((size_t)T * H * sizeof(double));
+    double* o_block = malloc((size_t)T * H * sizeof(double));
+    double* c_block = malloc((size_t)T * H * sizeof(double));
+    double* h_block = malloc((size_t)T * H * sizeof(double));
+    double* cprev_block = malloc((size_t)T * H * sizeof(double));
+    double* tanhC_block = malloc((size_t)T * H * sizeof(double));
+    assert(x_block != NULL && z_block != NULL && f_block != NULL && i_block != NULL && g_block != NULL && o_block != NULL && c_block != NULL && h_block != NULL && cprev_block != NULL && tanhC_block != NULL);
+
+    for (int t = 0; t < T; t++) {
+        x[t] = &x_block[(size_t)t * I];
+        z[t] = &z_block[(size_t)t * Z];
+        f[t] = &f_block[(size_t)t * H];
+        i[t] = &i_block[(size_t)t * H];
+        g[t] = &g_block[(size_t)t * H];
+        o[t] = &o_block[(size_t)t * H];
+        c[t] = &c_block[(size_t)t * H];
+        h[t] = &h_block[(size_t)t * H];
+        cprev[t] = &cprev_block[(size_t)t * H];
+        tanhC[t] = &tanhC_block[(size_t)t * H];
+    }
+
+    double* hprev = malloc(H * sizeof(double));
+    double* cprev_vec = malloc(H * sizeof(double));
+    double* dh = malloc(H * sizeof(double));
+    double* dh_next = malloc(H * sizeof(double));
+    double* dc = malloc(H * sizeof(double));
+    double* dc_next = malloc(H * sizeof(double));
+    double* df = malloc(H * sizeof(double));
+    double* d_f_pre = malloc(H * sizeof(double));
+    double* di_vec = malloc(H * sizeof(double));
+    double* d_i_pre = malloc(H * sizeof(double));
+    double* dg = malloc(H * sizeof(double));
+    double* d_g_pre = malloc(H * sizeof(double));
+    double* do_vec = malloc(H * sizeof(double));
+    double* d_o_pre = malloc(H * sizeof(double));
+    double* dlogits = malloc(O * sizeof(double));
+    double* logits_now = malloc(O * sizeof(double));
+    double* probs_now = malloc(O * sizeof(double));
+    double* dz = malloc(Z * sizeof(double));
+    double* sf = malloc(H * sizeof(double));
+    double* si = malloc(H * sizeof(double));
+    double* sg = malloc(H * sizeof(double));
+    double* so = malloc(H * sizeof(double));
+    assert(hprev != NULL && cprev_vec != NULL && dh != NULL && dh_next != NULL && dc != NULL && dc_next != NULL && df != NULL && d_f_pre != NULL && di_vec != NULL && d_i_pre != NULL && dg != NULL && d_g_pre != NULL && do_vec != NULL && d_o_pre != NULL && sf != NULL && si != NULL && sg != NULL && so != NULL);
+    assert(dlogits != NULL && logits_now != NULL && probs_now != NULL);
+    assert(dz != NULL);
 
     for (int b = 0; b < batch_count; b++) {
         trajectory* tr = trajectories[b];
-        
-        double** x = malloc(T * sizeof(double*));
-        double** z = malloc(T * sizeof(double*));
-        double** f = malloc(T * sizeof(double*));
-        double** i = malloc(T * sizeof(double*));
-        double** g = malloc(T * sizeof(double*));
-        double** o = malloc(T * sizeof(double*));
-        double** c = malloc(T * sizeof(double*));
-        double** h = malloc(T * sizeof(double*));
-        double** cprev = malloc(T * sizeof(double*));
-        assert(x != NULL && z != NULL && f != NULL && i != NULL && g != NULL && o != NULL && c != NULL && h != NULL && cprev != NULL);
 
-        double* hprev = calloc(H, sizeof(double));
-        double* cprev_vec = calloc(H, sizeof(double));
-        assert(hprev != NULL && cprev_vec != NULL);
+        for (int j = 0; j < H; j++) { 
+            hprev[j] = 0.0; 
+            cprev_vec[j] = 0.0; 
+        }
 
         for (int t = 0; t < T; t++) {
-            x[t] = convertState(tr->states[t]);
-            z[t] = malloc(Z * sizeof(double));
-            assert(z[t] != NULL);
-            for (int a = 0; a < I; a++) z[t][a] = x[t][a];
+            convertState(tr->states[t], x[t]);
+            memcpy(z[t], x[t], (size_t)I * sizeof(double));
             for (int a = 0; a < H; a++) z[t][I + a] = hprev[a];
+            for (int j = 0; j < H; j++) cprev[t][j] = cprev_vec[j];
 
-            f[t] = malloc(H * sizeof(double));
-            i[t] = malloc(H * sizeof(double));
-            g[t] = malloc(H * sizeof(double));
-            o[t] = malloc(H * sizeof(double));
-            c[t] = malloc(H * sizeof(double));
-            h[t] = malloc(H * sizeof(double));
-            cprev[t] = malloc(H * sizeof(double));
-            assert(f[t] != NULL && i[t] != NULL && g[t] != NULL && o[t] != NULL && c[t] != NULL && h[t] != NULL && cprev[t] != NULL);
+            for (int j = 0; j < H; j++) { 
+                sf[j] = network->Bf[j]; 
+                si[j] = network->Bi[j]; 
+                sg[j] = network->Bc[j]; 
+                so[j] = network->Bo[j]; 
+            }
+
+            for (int a = 0; a < Z; a++) {
+                double v = z[t][a];
+                double* Wfr = network->Wf[a];
+                double* Wir = network->Wi[a];
+                double* Wcr = network->Wc[a];
+                double* Wor = network->Wo[a];
+                for (int j = 0; j < H; j++) {
+                    sf[j] += v * Wfr[j];
+                    si[j] += v * Wir[j];
+                    sg[j] += v * Wcr[j];
+                    so[j] += v * Wor[j];
+                }
+            }
 
             for (int j = 0; j < H; j++) {
-                cprev[t][j] = cprev_vec[j];
-
-                double sf = network->Bf[j];
-                double si = network->Bi[j];
-                double sg = network->Bc[j];
-                double so = network->Bo[j];
-
-                for (int a = 0; a < Z; a++) {
-                    sf += z[t][a] * network->Wf[a][j];
-                    si += z[t][a] * network->Wi[a][j];
-                    sg += z[t][a] * network->Wc[a][j];
-                    so += z[t][a] * network->Wo[a][j];
-                }
-
-                f[t][j] = sigmoid(sf);
-                i[t][j] = sigmoid(si);
-                g[t][j] = tanh(sg);
-                o[t][j] = sigmoid(so);
-
-                c[t][j] = f[t][j] * cprev_vec[j] + i[t][j] * g[t][j];
-                h[t][j] = o[t][j] * tanh(c[t][j]);
-
+                double fj = sigmoid(sf[j]);
+                double ij = sigmoid(si[j]);
+                double gj = tanh(sg[j]);
+                double oj = sigmoid(so[j]);
+                f[t][j] = fj; i[t][j] = ij; g[t][j] = gj; o[t][j] = oj;
+                c[t][j] = fj * cprev_vec[j] + ij * gj;
+                double tc = tanh(c[t][j]);
+                tanhC[t][j] = tc;
+                h[t][j] = oj * tc;
                 hprev[j] = h[t][j];
                 cprev_vec[j] = c[t][j];
             }
         }
 
-        double* dh = malloc(H * sizeof(double));
-        double* dh_next = calloc(H, sizeof(double));
-        double* dc = malloc(H * sizeof(double));
-        double* dc_next = calloc(H, sizeof(double));
-        assert(dh != NULL && dh_next != NULL && dc != NULL && dc_next != NULL);
-
-        double* df = malloc(H * sizeof(double));
-        double* d_f_pre = malloc(H * sizeof(double));
-        double* di_vec = malloc(H * sizeof(double));
-        double* d_i_pre = malloc(H * sizeof(double));
-        double* dg = malloc(H * sizeof(double));
-        double* d_g_pre = malloc(H * sizeof(double));
-        double* do_vec = malloc(H * sizeof(double));
-        double* d_o_pre = malloc(H * sizeof(double));
-        assert(df != NULL && d_f_pre != NULL && di_vec != NULL && d_i_pre != NULL && dg != NULL && d_g_pre != NULL && do_vec != NULL && d_o_pre != NULL);
-
-        double* dlogits = malloc(O * sizeof(double));
-        double* logits_now = malloc(O * sizeof(double));
-        double* probs_now = malloc(O * sizeof(double));
-        assert(dlogits != NULL && logits_now != NULL && probs_now != NULL);
-
-        double* dz = malloc(Z * sizeof(double));
-        assert(dz != NULL);
-
+        for (int j = 0; j < H; j++) { 
+            dh_next[j] = 0.0; 
+            dc_next[j] = 0.0; 
+        }
         for (int t = T - 1; t >= 0; t--) {
-            int actionIndex = actionToIndex(tr->actions[t]);
+            int actionIndex = tr->actions[t];
             double maxlog = -1e30;
 
             for (int k = 0; k < O; k++) {
@@ -511,7 +537,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
                 probs_now[k] = e;
                 sum += e;
             }
-            for (int k = 0; k < O; k++) probs_now[k] /= sum + NUM_EPS;
+            for (int k = 0; k < O; k++) probs_now[k] /= (sum + NUM_EPS);
 
             double logp_new = log(probs_now[actionIndex] + NUM_EPS);
             double logp_old = log(tr->probs[t][actionIndex] + NUM_EPS);
@@ -556,9 +582,12 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             dBv += grad_v;
             for (int j = 0; j < H; j++) dh[j] += grad_v * network->Wv[j];
 
-            for (int j = 0; j < H; j++) do_vec[j] = dh[j] * tanh(c[t][j]);
+            for (int j = 0; j < H; j++) do_vec[j] = dh[j] * tanhC[t][j];
             for (int j = 0; j < H; j++) d_o_pre[j] = do_vec[j] * o[t][j] * (1.0 - o[t][j]);
-            for (int j = 0; j < H; j++) dc[j] = dh[j] * o[t][j] * (1.0 - tanh(c[t][j]) * tanh(c[t][j])) + dc_next[j];
+            for (int j = 0; j < H; j++) {
+                double tc = tanhC[t][j];
+                dc[j] = dh[j] * o[t][j] * (1.0 - tc * tc) + dc_next[j];
+            }
             for (int j = 0; j < H; j++) df[j] = dc[j] * cprev[t][j];
             for (int j = 0; j < H; j++) di_vec[j] = dc[j] * g[t][j];
             for (int j = 0; j < H; j++) dg[j] = dc[j] * i[t][j];
@@ -573,75 +602,38 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
                 dBo[j] += d_o_pre[j]; 
             }
 
-            for (int a = 0; a < Z; a++) { 
+            for (int a = 0; a < Z; a++) {
+                double vz = z[t][a];
                 for (int j = 0; j < H; j++) {
-                    dWf[a][j] += z[t][a] * d_f_pre[j];
-                    dWi[a][j] += z[t][a] * d_i_pre[j];
-                    dWc[a][j] += z[t][a] * d_g_pre[j];
-                    dWo[a][j] += z[t][a] * d_o_pre[j];
-                } 
+                    dWf[a][j] += vz * d_f_pre[j];
+                    dWi[a][j] += vz * d_i_pre[j];
+                    dWc[a][j] += vz * d_g_pre[j];
+                    dWo[a][j] += vz * d_o_pre[j];
+                }
             }
 
             for (int a = 0; a < Z; a++) {
                 double s = 0.0;
+                const double* Wfr = network->Wf[a];
+                const double* Wir = network->Wi[a];
+                const double* Wcr = network->Wc[a];
+                const double* Wor = network->Wo[a];
                 for (int j = 0; j < H; j++) {
-                    s += network->Wf[a][j] * d_f_pre[j];
-                    s += network->Wi[a][j] * d_i_pre[j];
-                    s += network->Wc[a][j] * d_g_pre[j];
-                    s += network->Wo[a][j] * d_o_pre[j];
+                    s += Wfr[j] * d_f_pre[j];
+                    s += Wir[j] * d_i_pre[j];
+                    s += Wcr[j] * d_g_pre[j];
+                    s += Wor[j] * d_o_pre[j];
                 }
                 dz[a] = s;
             }
 
             for (int j = 0; j < H; j++) dh_next[j] = dz[I + j];
             for (int j = 0; j < H; j++) dc_next[j] = dc[j] * f[t][j];
-
         }
-
-        free(dlogits);
-        free(dh);
-        free(do_vec);
-        free(d_o_pre);
-        free(dc);
-        free(df);
-        free(di_vec);
-        free(dg);
-        free(d_f_pre);
-        free(d_i_pre);
-        free(d_g_pre);
-        free(dz);
-        free(logits_now);
-        free(probs_now);
-
-        for (int t = 0; t < T; t++) {
-            free(x[t]);
-            free(z[t]);
-            free(f[t]);
-            free(i[t]);
-            free(g[t]);
-            free(o[t]);
-            free(c[t]);
-            free(h[t]);
-            free(cprev[t]);
-        }
-
-        free(x);
-        free(z);
-        free(f);
-        free(i);
-        free(g);
-        free(o);
-        free(c);
-        free(h);
-        free(cprev);
-        free(hprev);
-        free(cprev_vec);
-        free(dh_next);
-        free(dc_next);
     }
 
     double invM = 1.0 / (double)batch_count;
-    for (int a = 0; a < Z; a++) { 
+    for (int a = 0; a < Z; a++) {
         for (int j = 0; j < H; j++) { 
             dWf[a][j] *= invM; 
             dWi[a][j] *= invM; 
@@ -649,18 +641,23 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
             dWo[a][j] *= invM; 
         } 
     }
+
     for (int j = 0; j < H; j++) { 
         for (int k = 0; k < O; k++) dWout[j][k] *= invM; 
     }
+
     for (int j = 0; j < H; j++) { 
         dBf[j] *= invM; 
         dBi[j] *= invM; 
         dBc[j] *= invM; 
         dBo[j] *= invM; 
     }
-    for (int k = 0; k < O; k++) dBout[k] *= invM;
 
-    double clip = GRAD_CLIP_NORM; 
+    for (int k = 0; k < O; k++) dBout[k] *= invM;
+    for (int j = 0; j < H; j++) dWv[j] *= invM;
+    dBv *= invM;
+
+    double clip = GRAD_CLIP_NORM;
     double norm2 = 0.0;
     for (int a = 0; a < Z; a++) { 
         for (int j = 0; j < H; j++) { 
@@ -677,7 +674,7 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
     for (int k = 0; k < O; k++) norm2 += dBout[k]*dBout[k];
     for (int j = 0; j < H; j++) norm2 += dWv[j]*dWv[j];
     norm2 += dBv * dBv;
-    double norm = sqrt(norm2); 
+    double norm = sqrt(norm2);
     double scale = (norm > clip) ? (clip / (norm + NUM_EPS)) : 1.0;
     if (stats) {
         stats->grad_norm = norm;
@@ -731,8 +728,53 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
         free(As[b]); 
         free(Rs[b]); 
     }
-
-    free(As);
-    free(Rs);
+    free(As); 
+    free(Rs); 
     free(allA);
+
+    free(x); 
+    free(z); 
+    free(f); 
+    free(i); 
+    free(g); 
+    free(o); 
+    free(c); 
+    free(h); 
+    free(cprev); 
+    free(tanhC);
+    free(x_block); 
+    free(z_block); 
+    free(f_block); 
+    free(i_block); 
+    free(g_block); 
+    free(o_block); 
+    free(c_block); 
+    free(h_block); 
+    free(cprev_block); 
+    free(tanhC_block);
+
+    free(hprev); 
+    free(cprev_vec); 
+    free(dh); 
+    free(dh_next); 
+    free(dc); 
+    free(dc_next); 
+    free(df); 
+    free(d_f_pre); 
+    free(di_vec); 
+    free(d_i_pre); 
+    free(dg); 
+    free(d_g_pre); 
+    free(do_vec); 
+    free(d_o_pre); 
+    free(sf); 
+    free(si); 
+    free(sg); 
+    free(so);
+
+    free(dlogits); 
+    free(logits_now); 
+    free(probs_now);
+
+    free(dz);
 }
