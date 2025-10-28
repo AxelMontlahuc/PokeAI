@@ -22,28 +22,33 @@ L'agent utilise commme algorithme le PPO (Proximal Policy Optimization) avec un 
 ~$ ./bin/learner     # Sur Linux
 ~$ ./bin/learner.exe # Sur Windows
 ```
-5. Lancer $N$ instances de mGBA avec le script Lua `mGBASocketServer.lua` chargé.
-6. Lancer un agent pour chaque instance de mGBA :
+5. Lancer $N$ agents dans des terminaux séparés :
 ```sh
-~$ ./bin/agent XXXX     # Sur Linux
-~$ ./bin/agent.exe XXXX # Sur Windows
+~$ ./bin/worker X     # Sur Linux
+~$ ./bin/worker.exe X # Sur Windows
 ```
-où `XXXX` est le port sur lequel l'instance de mGBA écoute (pour le premier agent mettre `XXXX`, pour le deuxième `XXXX`, etc).
+où `X` est un identifiant unique pour chaque agent (par exemple de 1 à $N$).
+
+> **Note :** Nous utilisons un système de "learner" et de "worker" pour accélérer l'apprentissage : le "learner" est responsable de l'entraînement du modèle (c'est lui qui fait la backpropagation) puis qui met à jour le modèle sauvegardé dans `checkpoints/` tandis que le "worker" charge le dernier modèle sauvegardé dans `checkpoint/` et l'utilise pour collecter des trajectoires qu'il fournit au "learner" dans `queue/`. \
+> Cela permet donc de paralléliser la collecte de données (qui est la phase la plus lente car elle dépend de l'émulateur), ce qui accélère donc l'apprentissage. \
+> Il faut donc adapter le nombre de "worker" en fonction de la puissance de l'ordinateur utilisé, généralement, lancer autant de "worker" que de threads (deux fois le nombre de coeurs du CPU la plupart du temps) disponibles est ce qui fonctionne le mieux. \
+> Ce système se révèle d'autant plus efficace quand on entraîne le modèle sur un serveur (où l'on peut avoir 96 coeurs facilement par exemple). 
 
 # Structure
-- `mGBASocketServer.lua` : Script Lua utilisant l'API de mGBA pour faire le pont avec `mGBA-interface` à travers un socket.
-- `mGBA-interface` : Librairie en C pour communiquer avec mGBA : appuyer sur des touches et lire la map et autre données du jeu. Pour plus d'informations, voir le [README](mGBA-interface/README.md).
+- `bin` : Dossier des exécutables.
+- `build` : Dossier des fichiers objets compilés.
+- `ROM` : Dossier où placer la ROM de Pokémon Emeraude et éventuellement des savestates (sauvegardes).
+- `checkpoints` : Dossier où seront sauvegardés les checkpoints (sauvegardes du modèle).
+- `gba` : Dossier contenant le code pour l'émulateur. 
+- `locks` : Dossier où seront placés de fichiers `.lock` pour éviter que plusieurs agents n'utilisent le même port.
+- `makefile` : Fichier de compilation.
+- `queue` : Dossier où seront placés les fichiers `.traj` représentant des trajectoires collectées par les agents et à utiliser pour l'apprentissage.
+- `screen` : Dossier où seront placés les screenshots de l'émulateur pour que l'agent puisse lire l'état du jeu.
 - `src` : Code source de l'agent en C :
   - `agent` : Boucle principale de l'agent, gestion des épisodes, interaction avec l'environnement.
   - `policy` : Implémentation du LSTM et du VPG. 
   - `state` : Fonctions liées à l'état/trajectoires du jeu. 
   - `checkpoint.c` : Sauvegarde et restauration du modèle complet. 
-- `bin` : Dossier des exécutables.
-- `build` : Dossier des fichiers objets compilés.
-- `ROM` : Dossier où placer la ROM de Pokémon Emeraude et éventuellement des savestates (sauvegardes).
-- `checkpoints` : Dossier où seront sauvegardés les checkpoints (sauvegardes du modèle).
-- `locks` : Dossier où seront placés de fichiers `.lock` pour éviter que plusieurs agents n'utilisent le même port.
-- `queue` : Dossier où seront placés les fichiers `.traj` représentant des trajectoires collectées par les agents et à utiliser pour l'apprentissage.
 
 # Documentation
 Nous allons ici rentrer un peu plus en détail sur l'implémentation et les mathématiques derrière l'agent en détaillant chaque partie/améliorations du modèle. \
