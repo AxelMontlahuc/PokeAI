@@ -570,13 +570,13 @@ void backpropagation(LSTM* network, double learningRate, int steps, trajectory**
                 double un = (v_t - R_t) * (v_t - R_t);
                 double cl = (v_t_clipped - R_t) * (v_t_clipped - R_t);
                 if (un >= cl) {
-                    grad_v = 2.0 * VALUE_COEFF * (v_t - R_t);
+                    grad_v = -2.0 * VALUE_COEFF * (v_t - R_t);
                 } else {
                     double dvclip_dv = (v_t > v_high || v_t < v_low) ? 0.0 : 1.0;
-                    grad_v = 2.0 * VALUE_COEFF * (v_t_clipped - R_t) * dvclip_dv;
+                    grad_v = -2.0 * VALUE_COEFF * (v_t_clipped - R_t) * dvclip_dv;
                 }
             } else {
-                grad_v = 2.0 * VALUE_COEFF * (v_t - R_t);
+                grad_v = -2.0 * VALUE_COEFF * (v_t - R_t);
             }
             for (int j = 0; j < H; j++) dWv[j] += grad_v * h[t][j];
             dBv += grad_v;
