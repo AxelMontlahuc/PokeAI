@@ -31,6 +31,7 @@ for i in $(seq 1 $N); do
     else
         $STD_BUF_PREFIX ./bin/worker $i > "./logs/$DATE/worker_${i}.log" 2>&1 &
     fi
+    sleep 0.10
 done
 
 echo "Started learner and $N workers. Logs are in the ./logs/$DATE directory."
