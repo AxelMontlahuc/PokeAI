@@ -17,17 +17,11 @@ L'agent utilise commme algorithme le PPO (Proximal Policy Optimization) avec un 
 ```sh
 ~$ make
 ```
-4. Lancer le programme responsable de l'apprentissage :
+4. Entraîner le modèle avec : 
 ```sh
-~$ ./bin/learner     # Sur Linux
-~$ ./bin/learner.exe # Sur Windows
+~$ ./train.sh <number of workers>  # Sur Linux
+~$ .\train.bat <number of workers> # Sur Windows
 ```
-5. Lancer $N$ agents dans des terminaux séparés :
-```sh
-~$ ./bin/worker X     # Sur Linux
-~$ ./bin/worker.exe X # Sur Windows
-```
-où `X` est un identifiant unique pour chaque agent (par exemple de 1 à $N$).
 
 > **Note :** Nous utilisons un système de "learner" et de "worker" pour accélérer l'apprentissage : le "learner" est responsable de l'entraînement du modèle (c'est lui qui fait la backpropagation) puis qui met à jour le modèle sauvegardé dans `checkpoints/` tandis que le "worker" charge le dernier modèle sauvegardé dans `checkpoint/` et l'utilise pour collecter des trajectoires qu'il fournit au "learner" dans `queue/`. \
 > Cela permet donc de paralléliser la collecte de données (qui est la phase la plus lente car elle dépend de l'émulateur), ce qui accélère donc l'apprentissage. \
@@ -41,6 +35,7 @@ où `X` est un identifiant unique pour chaque agent (par exemple de 1 à $N$).
 - `checkpoints` : Dossier où seront sauvegardés les checkpoints (sauvegardes du modèle).
 - `gba` : Dossier contenant le code pour l'émulateur. 
 - `locks` : Dossier où seront placés de fichiers `.lock` pour éviter que plusieurs agents n'utilisent le même port.
+- `logs` : Dossier où seront placés les fichiers de logs des agents.
 - `makefile` : Fichier de compilation.
 - `queue` : Dossier où seront placés les fichiers `.traj` représentant des trajectoires collectées par les agents et à utiliser pour l'apprentissage.
 - `screen` : Dossier où seront placés les screenshots de l'émulateur pour que l'agent puisse lire l'état du jeu.

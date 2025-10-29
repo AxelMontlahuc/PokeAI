@@ -9,6 +9,7 @@
 #else
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/time.h>
 #endif
 
 #include "state.h"
@@ -25,6 +26,46 @@ static void ensure_dir(const char* path) {
 #else
     mkdir(path, 0755);
 #endif
+}
+
+static int read_phase_file(const char* locks_dir) {
+    char path[512];
+#ifdef _WIN32
+    snprintf(path, sizeof(path), "%s\\phase", locks_dir);
+#else
+    snprintf(path, sizeof(path), "%s/phase", locks_dir);
+#endif
+    FILE* f = fopen(path, "rb");
+    if (!f) return 0;
+    int p = 0;
+    if (fscanf(f, "%d", &p) != 1) { fclose(f); return 0; }
+    fclose(f);
+    return p;
+}
+
+static void write_ready_flag(const char* locks_dir, int phase, int id) {
+    char tmp[512], final[512];
+#ifdef _WIN32
+    snprintf(tmp, sizeof(tmp),   "%s\\ready-%06d-%03d.tmp",  locks_dir, phase, id);
+    snprintf(final, sizeof(final),"%s\\ready-%06d-%03d.flag", locks_dir, phase, id);
+#else
+    snprintf(tmp, sizeof(tmp),   "%s/ready-%06d-%03d.tmp",  locks_dir, phase, id);
+    snprintf(final, sizeof(final),"%s/ready-%06d-%03d.flag", locks_dir, phase, id);
+#endif
+    FILE* f = fopen(tmp, "wb");
+    if (f) { fclose(f); rename(tmp, final); }
+}
+
+static void wait_for_phase_advance(const char* locks_dir, int cur_phase) {
+    for (;;) {
+#ifdef _WIN32
+        Sleep(50);
+#else
+        usleep(50 * 1000);
+#endif
+        int p = read_phase_file(locks_dir);
+        if (p > cur_phase) break;
+    }
 }
 
 static const int ACTIONS[ACTION_COUNT] = {
@@ -97,8 +138,9 @@ int main(int argc, char** argv) {
 
     ensure_dir("checkpoints");
     ensure_dir(QUEUE_DIR);
+    ensure_dir(LOCKS_DIR);
 
-    unsigned int seed = (unsigned int)time(NULL);
+    unsigned int seed = (unsigned int)(time(NULL) * ID);
     srand(seed);
 
     uint64_t loaded_episodes = 0ULL;
@@ -110,11 +152,14 @@ int main(int argc, char** argv) {
     int episode = (int)loaded_episodes;
     double temperature = TEMP_MIN;
 
-    int file_seq = 0;
+    int batches_per_episode = (WORKER_TRAJECTORIES + WORKER_BATCH_SIZE - 1) / WORKER_BATCH_SIZE; // On rajoute WORKER_BATCH_SIZE pour arrondir au supérieur
+    int batches_done_in_episode = 0;
 
     (void)gba_create(CORE_PATH, ROM_PATH);
 
     while (1) {
+        int phase = read_phase_file(LOCKS_DIR);
+
         uint64_t ep_tmp = 0ULL;
         uint64_t seed_tmp = 0ULL;
         LSTM* reloaded = loadLSTM(CHECKPOINT_PATH, &ep_tmp, &seed_tmp);
@@ -122,48 +167,51 @@ int main(int argc, char** argv) {
             if (network) freeLSTM(network);
             network = reloaded;
             episode = (int)ep_tmp;
-            if (seed_tmp != 0ULL) { 
-                seed = (unsigned int)seed_tmp; 
-                srand(seed); 
+            if (seed_tmp != 0ULL) {
+                seed = (unsigned int)(time(NULL) * ID);
+                srand(seed);
             }
             printf("[Worker] Reloaded checkpoint (episode=%d)\n", episode);
         }
 
-        gba_reset();
-        startProcedure();
-        resetFlags();
+        if (batches_done_in_episode == 0) {
+            gba_reset();
+            startProcedure();
+            resetFlags();
+        }
 
         temperature = fmax(TEMP_MIN, TEMP_MAX * pow(TEMP_DECAY, (double)episode));
 
-        for (int t=0; t<WORKER_TRAJECTORIES; t += WORKER_BATCH_SIZE) {
-            trajectory** batch = (trajectory**)malloc(WORKER_BATCH_SIZE * sizeof(trajectory*));
-            assert(batch != NULL);
-
-            for (int b=0; b<WORKER_BATCH_SIZE; b++) {
-                batch[b] = runTrajectory(network, WORKER_STEPS, temperature);
-            }
-
-            char tmp_path[512], final_path[512];
-#ifdef _WIN32
-            snprintf(tmp_path, sizeof(tmp_path), "%s\\worker-%d-%06d.traj.tmp", QUEUE_DIR, ID, file_seq);
-            snprintf(final_path, sizeof(final_path), "%s\\worker-%d-%06d.traj", QUEUE_DIR, ID, file_seq);
-#else
-            snprintf(tmp_path, sizeof(tmp_path), "%s/worker-%d-%06d.traj.tmp", QUEUE_DIR, ID, file_seq);
-            snprintf(final_path, sizeof(final_path), "%s/worker-%d-%06d.traj", QUEUE_DIR, ID, file_seq);
-#endif
-
-            if (write_batch_file(tmp_path, final_path, batch, WORKER_BATCH_SIZE, WORKER_STEPS, temperature) != 0) {
-                printf("[Worker] Failed to write %s\n", final_path);
-            } else {
-                printf("[Worker] Enqueued %s\n", final_path);
-            }
-            file_seq++;
-
-            for (int b=0; b<WORKER_BATCH_SIZE; b++) freeTrajectory(batch[b]);
-            free(batch);
+        trajectory** batch = (trajectory**)malloc(WORKER_BATCH_SIZE * sizeof(trajectory*));
+        assert(batch != NULL);
+        for (int b=0; b<WORKER_BATCH_SIZE; b++) {
+            batch[b] = runTrajectory(network, WORKER_STEPS, temperature);
         }
 
-        episode++;
+        char tmp_path[512], final_path[512];
+#ifdef _WIN32
+        snprintf(tmp_path, sizeof(tmp_path), "%s\\phase-%06d-worker-%03d.traj.tmp", QUEUE_DIR, phase, ID);
+        snprintf(final_path, sizeof(final_path), "%s\\phase-%06d-worker-%03d.traj", QUEUE_DIR, phase, ID);
+#else
+        snprintf(tmp_path, sizeof(tmp_path), "%s/phase-%06d-worker-%03d.traj.tmp", QUEUE_DIR, phase, ID);
+        snprintf(final_path, sizeof(final_path), "%s/phase-%06d-worker-%03d.traj", QUEUE_DIR, phase, ID);
+#endif
+
+        if (write_batch_file(tmp_path, final_path, batch, WORKER_BATCH_SIZE, WORKER_STEPS, temperature) != 0) {
+            printf("[Worker] Failed to write %s\n", final_path);
+        } else {
+            printf("[Worker] Enqueued %s\n", final_path);
+        }
+        for (int b=0; b<WORKER_BATCH_SIZE; b++) freeTrajectory(batch[b]);
+        free(batch);
+
+        write_ready_flag(LOCKS_DIR, phase, ID);
+        wait_for_phase_advance(LOCKS_DIR, phase);
+
+        batches_done_in_episode++;
+        if (batches_done_in_episode >= batches_per_episode) {
+            batches_done_in_episode = 0; 
+        }
     }
 
     freeLSTM(network);
