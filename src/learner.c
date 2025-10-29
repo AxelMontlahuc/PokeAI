@@ -34,8 +34,38 @@ static void ensure_dir(const char* path) {
 #endif
 }
 
-static int list_traj_files(const char* dir, char files[][512], int maxn) {
+static int read_phase_file(const char* locks_dir) {
+    char path[512];
+#ifdef _WIN32
+    snprintf(path, sizeof(path), "%s\\phase", locks_dir);
+#else
+    snprintf(path, sizeof(path), "%s/phase", locks_dir);
+#endif
+    FILE* f = fopen(path, "rb");
+    if (!f) return 0;
+    int p = 0;
+    if (fscanf(f, "%d", &p) != 1) { fclose(f); return 0; }
+    fclose(f);
+    return p;
+}
+
+static void write_phase_file(const char* locks_dir, int phase) {
+    char tmp[512], final[512];
+#ifdef _WIN32
+    snprintf(tmp, sizeof(tmp),   "%s\\phase.tmp", locks_dir);
+    snprintf(final, sizeof(final),"%s\\phase", locks_dir);
+#else
+    snprintf(tmp, sizeof(tmp),   "%s/phase.tmp", locks_dir);
+    snprintf(final, sizeof(final),"%s/phase", locks_dir);
+#endif
+    FILE* f = fopen(tmp, "wb");
+    if (f) { fprintf(f, "%d\n", phase); fclose(f); rename(tmp, final); }
+}
+
+static int list_traj_files_for_phase(const char* dir, int phase, char files[][512], int maxn) {
     int n = 0;
+    char prefix[64];
+    snprintf(prefix, sizeof(prefix), "phase-%06d-", phase);
 #ifdef _WIN32
     char pattern[512];
     snprintf(pattern, sizeof(pattern), "%s\\*.traj", dir);
@@ -43,8 +73,10 @@ static int list_traj_files(const char* dir, char files[][512], int maxn) {
     if (h == -1) return 0;
     do {
         if (n >= maxn) break;
-        snprintf(files[n], 512, "%s\\%s", dir, f.name);
-        n++;
+        if (strstr(f.name, prefix)) {
+            snprintf(files[n], 512, "%s\\%s", dir, f.name);
+            n++;
+        }
     } while (_findnext(h, &f) == 0);
     _findclose(h);
 #else
@@ -52,7 +84,7 @@ static int list_traj_files(const char* dir, char files[][512], int maxn) {
     if (!d) return 0;
     struct dirent* e;
     while ((e = readdir(d)) && n < maxn) {
-        if (strstr(e->d_name, ".traj")) {
+        if (strstr(e->d_name, ".traj") && strstr(e->d_name, prefix) == e->d_name) {
             snprintf(files[n], 512, "%s/%s", dir, e->d_name);
             n++;
         }
@@ -62,13 +94,67 @@ static int list_traj_files(const char* dir, char files[][512], int maxn) {
     return n;
 }
 
+static int count_ready_flags_for_phase(const char* locks_dir, int phase) {
+    int n = 0;
+    char prefix[64];
+    snprintf(prefix, sizeof(prefix), "ready-%06d-", phase);
+#ifdef _WIN32
+    char pattern[512];
+    snprintf(pattern, sizeof(pattern), "%s\\*.flag", locks_dir);
+    struct _finddata_t f; intptr_t h = _findfirst(pattern, &f);
+    if (h == -1) return 0;
+    do {
+        if (strstr(f.name, prefix) == f.name) n++;
+    } while (_findnext(h, &f) == 0);
+    _findclose(h);
+#else
+    DIR* d = opendir(locks_dir);
+    if (!d) return 0;
+    struct dirent* e;
+    while ((e = readdir(d))) {
+        if (strstr(e->d_name, ".flag") && strstr(e->d_name, prefix) == e->d_name) n++;
+    }
+    closedir(d);
+#endif
+    return n;
+}
+
+static void remove_ready_flags_for_phase(const char* locks_dir, int phase) {
+    char prefix[64];
+    snprintf(prefix, sizeof(prefix), "ready-%06d-", phase);
+#ifdef _WIN32
+    char pattern[512];
+    snprintf(pattern, sizeof(pattern), "%s\\*.flag", locks_dir);
+    struct _finddata_t f; intptr_t h = _findfirst(pattern, &f);
+    if (h == -1) return;
+    do {
+        if (strstr(f.name, prefix) == f.name) {
+            char path[512]; snprintf(path, sizeof(path), "%s\\%s", locks_dir, f.name); remove(path);
+        }
+    } while (_findnext(h, &f) == 0);
+    _findclose(h);
+#else
+    DIR* d = opendir(locks_dir);
+    if (!d) return;
+    struct dirent* e;
+    while ((e = readdir(d))) {
+        if (strstr(e->d_name, ".flag") && strstr(e->d_name, prefix) == e->d_name) {
+            char path[512]; snprintf(path, sizeof(path), "%s/%s", locks_dir, e->d_name); remove(path);
+        }
+    }
+    closedir(d);
+#endif
+}
+
 static int cmp_double_asc(const void* a, const void* b) {
     double da = *(const double*)a;
     double db = *(const double*)b;
     return (da > db) - (da < db);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    int expected_workers = 0;
+    if (argc >= 2) expected_workers = atoi(argv[1]);
     ensure_dir("checkpoints");
     ensure_dir(QUEUE_DIR);
 
@@ -83,6 +169,7 @@ int main() {
     snprintf(cmd, sizeof(cmd), "rm -rf \"%s\" \"%s\"; mkdir -p \"%s\" \"%s\"", QUEUE_DIR, LOCKS_DIR, QUEUE_DIR, LOCKS_DIR);
     system(cmd);
 #endif
+    write_phase_file(LOCKS_DIR, 0);
 
     uint64_t loaded_episodes = 0ULL;
     uint64_t loaded_seed = 0ULL;
@@ -96,27 +183,33 @@ int main() {
     int episode = (int)loaded_episodes;
 
     while (1) {
-        char files[64][512];
-    int n = list_traj_files(QUEUE_DIR, files, FILES_PER_STEP);
-        if (n == 0) {
+        int phase = read_phase_file(LOCKS_DIR);
+
+        char files[256][512];
+        int n = 0;
+        for (;;) {
+            int ready = count_ready_flags_for_phase(LOCKS_DIR, phase);
+            n = list_traj_files_for_phase(QUEUE_DIR, phase, files, 256);
+            int need = (expected_workers > 0) ? expected_workers : n;
+            if (ready >= need && n >= need && need > 0) break;
 #ifdef _WIN32
             Sleep(50);
 #else
             usleep(50 * 1000);
 #endif
-            continue;
         }
 
-        trajectory*** batches = malloc(sizeof(trajectory**) * n);
+        int use_n = (expected_workers > 0 && expected_workers <= n) ? expected_workers : n;
+        trajectory*** batches = malloc(sizeof(trajectory**) * use_n);
 
-        int* b_sizes = malloc(sizeof(int) * n);
-        int* b_steps = malloc(sizeof(int) * n);
-        double* b_temp = malloc(sizeof(double) * n);
+        int* b_sizes = malloc(sizeof(int) * use_n);
+        int* b_steps = malloc(sizeof(int) * use_n);
+        double* b_temp = malloc(sizeof(double) * use_n);
 
         int total_traj = 0;
         int steps = -1;
 
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < use_n; i++) {
             trajectory** batch = NULL;
 
             int batch_size = 0;
@@ -143,7 +236,7 @@ int main() {
 
         trajectory** flat = malloc(sizeof(trajectory*) * total_traj);
         int idx = 0;
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < use_n; i++) {
             for (int j = 0; j < b_sizes[i]; j++) {
                 flat[idx++] = batches[i][j];
             }
@@ -405,7 +498,7 @@ int main() {
 
         for (int i = 0; i < total_traj; i++) freeTrajectory(flat[i]);
         free(flat);
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < use_n; i++) {
             if (batches[i]) free(batches[i]);
             remove(files[i]);
         }
@@ -415,6 +508,9 @@ int main() {
         free(b_sizes); 
         free(b_steps); 
         free(b_temp);
+
+        remove_ready_flags_for_phase(LOCKS_DIR, phase);
+        write_phase_file(LOCKS_DIR, phase + 1);
     }
 
     freeLSTM(network);

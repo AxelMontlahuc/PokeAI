@@ -20,9 +20,9 @@ else
 fi
 
 if [ -n "$USE_SCRIPT" ]; then
-    script -q -f -c "./bin/learner" "./logs/$DATE/learner.log" &
+    script -q -f -c "./bin/learner $N" "./logs/$DATE/learner.log" &
 else
-    $STD_BUF_PREFIX ./bin/learner > "./logs/$DATE/learner.log" 2>&1 &
+    $STD_BUF_PREFIX ./bin/learner $N > "./logs/$DATE/learner.log" 2>&1 &
 fi
 
 for i in $(seq 1 $N); do
