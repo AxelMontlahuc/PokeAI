@@ -42,6 +42,8 @@ double GAMMA_DISCOUNT = 0.90;
 double GAE_LAMBDA = 0.95;
 
 double ENTROPY_COEFF = 0.05;
+double ENTROPY_DECAY = 0.9995;
+double ENTROPY_MIN = 0.005;
 double VALUE_COEFF = 0.10;
 double VALUE_CLIP_EPS = 0.20;
 double GRAD_CLIP_NORM = 100.0;
@@ -52,6 +54,9 @@ double ADAM_EPS = 1e-8;
 
 double NUM_EPS = 1e-12;
 double STD_EPS = 1e-8;
+
+double BASE_LR_MIN = 3e-4;
+double BASE_LR_MAX = 1e-2;
 
 const uint32_t TRAJ_MAGIC = 0x30524A54u; // 'TRJ0'
 const uint16_t TRAJ_VERSION = 4;

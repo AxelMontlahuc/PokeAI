@@ -46,6 +46,8 @@ extern double GAMMA_DISCOUNT;
 extern double GAE_LAMBDA;
 
 extern double ENTROPY_COEFF;
+extern double ENTROPY_DECAY;
+extern double ENTROPY_MIN;
 extern double VALUE_COEFF;
 extern double VALUE_CLIP_EPS;
 extern double GRAD_CLIP_NORM;
@@ -56,6 +58,9 @@ extern double ADAM_EPS;
 
 extern double NUM_EPS;
 extern double STD_EPS;
+
+extern double BASE_LR_MIN;
+extern double BASE_LR_MAX;
 
 extern const uint32_t TRAJ_MAGIC;
 extern const uint16_t TRAJ_VERSION;

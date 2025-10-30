@@ -338,6 +338,9 @@ int main(int argc, char** argv) {
 
         double warmup = (episode <= WARMUP_EPISODES) ? (fmax(MIN_WARMUP_FACTOR, (double)episode / (double)WARMUP_EPISODES)) : 1.0;
         double lr = BASE_LR * pow(LR_DECAY, (double)episode) * warmup;
+        
+        double ent_coeff_eff = fmax(ENTROPY_MIN, ENTROPY_COEFF * pow(ENTROPY_DECAY, (double)episode));
+        ENTROPY_COEFF = ent_coeff_eff;
         int mb_size = (total_traj >= MB_TRAJ_THRESHOLD) ? MB_SIZE_DEFAULT : total_traj;
 
         int* indices = (int*)malloc(sizeof(int) * total_traj);
@@ -476,6 +479,16 @@ int main(int argc, char** argv) {
                 printf("            : value_loss=%-9.6f  explained_var=%-7.4f\n\n", vloss_mean, ev);
             } else {
                 printf("            : value_loss=n/a  explained_var=n/a\n\n");
+            }
+
+            if (!isnan(mean_kl) && TARGET_KL > 0.0) {
+                double low = 0.5 * TARGET_KL;
+                double high = 2.0 * TARGET_KL;
+                if (mean_kl < low) {
+                    BASE_LR = fmin(BASE_LR * 1.05, BASE_LR_MAX);
+                } else if (mean_kl > high) {
+                    BASE_LR = fmax(BASE_LR * 0.8, BASE_LR_MIN);
+                }
             }
         } else {
             printf("  PPO diag  : n/a (no steps)\n\n");
