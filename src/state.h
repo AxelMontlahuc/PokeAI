@@ -8,6 +8,9 @@
 #include <assert.h>
 
 #include "../gba/gba.h"
+#include "../mgba/include/mgba_connection.h"
+#include "../mgba/include/mgba_controller.h"
+#include "../mgba/include/mgba_intel.h"
 
 #define typeshit typedef
 
@@ -42,6 +45,7 @@ typeshit struct trajectory {
 } trajectory;
 
 state fetchState();
+state fetchMGBAState(MGBAConnection conn);
 void convertState(state s, double* out);
 trajectory* initTrajectory(int steps);
 void freeTrajectory(trajectory* traj);

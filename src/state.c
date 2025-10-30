@@ -22,6 +22,28 @@ state fetchState() {
     return s;
 }
 
+state fetchMGBAState(MGBAConnection conn) {
+    state s;
+    
+    int team_raw[6*8];
+
+    read_state(conn.sock, team_raw, s.enemy, s.PP, &s.zone, &s.clock, s.bg0, s.bg2);
+
+    for (int i = 0; i < 6; i++) {
+        int o = i * 8;
+        s.team[i].maxHP   = team_raw[o + 0];
+        s.team[i].HP      = team_raw[o + 1];
+        s.team[i].level   = team_raw[o + 2];
+        s.team[i].ATK     = team_raw[o + 3];
+        s.team[i].DEF     = team_raw[o + 4];
+        s.team[i].SPEED   = team_raw[o + 5];
+        s.team[i].ATK_SPE = team_raw[o + 6];
+        s.team[i].DEF_SPE = team_raw[o + 7];
+    }
+
+    return s;
+}
+
 void convertState(state s, double* out) {
     for (int i=0; i<6; i++) {
         out[i*8 + 0] = (double)s.team[i].maxHP / 300.0;
