@@ -1,7 +1,7 @@
 #include "constants.h"
 
 const int INPUT_SIZE = 6*8 + 4 + 3 + 2 + 2*32*32;
-const int HIDDEN_SIZE = 128;
+const int HIDDEN_SIZE = 256;
 
 int ID = 1;
 
@@ -9,42 +9,41 @@ const char* const QUEUE_DIR = "queue";
 const char* const LOCKS_DIR = "locks";
 const char* const CHECKPOINT_PATH = "checkpoints/model-last.sav";
 
-const char* ROM_PATH = "/home/axel/Documents/Dev/PokeAI/ROM/pokemon.gba";
-const char* CORE_PATH = "/home/axel/Documents/Dev/libretro-super/dist/unix/mgba_libretro.so";
-const char* SCREEN_PATH_PREFIX = "/home/axel/Documents/Dev/PokeAI/screen/";
-char SCREEN_PATH[512] = "/home/axel/Documents/Dev/PokeAI/screen/1.bmp";
-const char* SAVESTATE_PATH = "/home/axel/Documents/Dev/PokeAI/ROM/start.sav";
+const char* ROM_PATH = "/home/axel_montlahuc_prog/PokeAI/ROM/pokemon.gba";
+const char* CORE_PATH = "/home/axel_montlahuc_prog/PokeAI/ROM/mgba_libretro.so";
+const char* SCREEN_PATH_PREFIX = "/home/axel_montlahuc_prog/PokeAI/screen/";
+char SCREEN_PATH[512] = "/home/axel_montlahuc_prog/PokeAI/screen/1.bmp";
+const char* SAVESTATE_PATH = "/home/axel_montlahuc_prog/PokeAI/ROM/start.sav";
 
-const int SPEED = 90;
+const int SPEED = 120;
 
-int WORKER_TRAJECTORIES = 64;
-int WORKER_STEPS = 128;
-int WORKER_BATCH_SIZE = 8;
-int BUTTON_PRESS_MS = 50;
+int WORKER_TRAJECTORIES = 8;
+int WORKER_STEPS = 256;
+int WORKER_BATCH_SIZE = 4;
 
-double TEMP_MAX = 2.0;
+double TEMP_MAX = 1.5;
 double TEMP_MIN = 1.0;
-double TEMP_DECAY = 0.97;
+double TEMP_DECAY = 0.95;
 
 int FILES_PER_STEP = 4;
 
-int PPO_EPOCHS = 3;
-double BASE_LR = 0.010;
-double LR_DECAY = 0.99;
+int PPO_EPOCHS = 4;
+double BASE_LR = 0.001;
+double LR_DECAY = 0.9995;
 int WARMUP_EPISODES = 5;
 double MIN_WARMUP_FACTOR = 0.1;
 int MB_TRAJ_THRESHOLD = 8;
-int MB_SIZE_DEFAULT = 4;
+int MB_SIZE_DEFAULT = 8;
 double CLIP_EPS = 0.20;
-double TARGET_KL = 0.02;
+double TARGET_KL = 0.03;
 
-double GAMMA_DISCOUNT = 0.90;
+double GAMMA_DISCOUNT = 0.995;
 double GAE_LAMBDA = 0.95;
 
-double ENTROPY_COEFF = 0.05;
-double ENTROPY_DECAY = 0.9995;
+double ENTROPY_COEFF = 0.02;
+double ENTROPY_DECAY = 0.995;
 double ENTROPY_MIN = 0.005;
-double VALUE_COEFF = 0.10;
+double VALUE_COEFF = 0.50;
 double VALUE_CLIP_EPS = 0.20;
 double GRAD_CLIP_NORM = 100.0;
 

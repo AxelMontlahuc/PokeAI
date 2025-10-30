@@ -24,7 +24,6 @@ extern const int SPEED;
 extern int WORKER_TRAJECTORIES;
 extern int WORKER_STEPS;
 extern int WORKER_BATCH_SIZE;
-extern int BUTTON_PRESS_MS;
 
 extern double TEMP_MAX;
 extern double TEMP_MIN;

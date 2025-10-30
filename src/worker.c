@@ -115,9 +115,8 @@ trajectory* runTrajectory(LSTM* network, int steps, double temperature) {
         traj->actions[i] =  ACTIONS[chooseAction(traj->probs[i], ACTION_COUNT)];
         traj->values[i] = network->last_value;
 
-        gba_run(SPEED);
-
         gba_button(traj->actions[i]);
+        gba_run(SPEED);
         gba_screen(SCREEN_PATH);
 
         state s_next = fetchState();
