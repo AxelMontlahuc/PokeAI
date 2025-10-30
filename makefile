@@ -1,7 +1,7 @@
 CC := gcc
 AR := ar
 CSTD := -std=c99
-CFLAGS := $(CSTD) -Wall -Wextra -O3 -march=native -ffast-math -Isrc -Igba
+CFLAGS := $(CSTD) -Wall -Wextra -O3 -march=native -ffast-math -Isrc -Igba -Imgba/include
 
 ifeq ($(OS),Windows_NT)
 	UNAME_S := Windows
@@ -31,13 +31,19 @@ endif
 BUILD_DIR := build
 BIN_DIR := bin
 
+MGBA_SRC := \
+	mgba/src/mgba_connection.c \
+	mgba/src/mgba_controller.c \
+	mgba/src/mgba_intel.c
+	
 COMMON_SRC := \
 	src/policy.c \
 	src/constants.c \
 	src/checkpoint.c \
 	src/reward.c \
 	src/serializer.c \
-	gba/gba.c
+	gba/gba.c \
+	$(MGBA_SRC)
 
 WORKER_SRC := \
 	src/worker.c \
@@ -49,24 +55,33 @@ LEARNER_SRC := \
 	src/state.c \
 	$(COMMON_SRC)
 
+RUN_SRC := \
+	src/run.c \
+	src/state.c \
+	$(COMMON_SRC)
+
 WORKER_OBJS := $(WORKER_SRC:%.c=$(BUILD_DIR)/%.o)
 LEARNER_OBJS := $(LEARNER_SRC:%.c=$(BUILD_DIR)/%.o)
+RUN_OBJS := $(RUN_SRC:%.c=$(BUILD_DIR)/%.o)
 
 WORKER_TARGET := $(BIN_DIR)/worker$(EXE)
 LEARNER_TARGET := $(BIN_DIR)/learner$(EXE)
+RUN_TARGET := $(BIN_DIR)/run$(EXE)
 
 .PHONY: all clean run dirs
 
-all: $(WORKER_TARGET) $(LEARNER_TARGET)
+all: $(WORKER_TARGET) $(LEARNER_TARGET) $(RUN_TARGET)
 
 dirs:
 ifneq ($(UNAME_S),Windows)
-	@$(MKDIR_P) $(BUILD_DIR) $(BIN_DIR) $(BUILD_DIR)/src $(BUILD_DIR)/gba
+	@$(MKDIR_P) $(BUILD_DIR) $(BIN_DIR) $(BUILD_DIR)/src $(BUILD_DIR)/gba $(BUILD_DIR)/mgba $(BUILD_DIR)/mgba/src
 else
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)' | Out-Null"
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BIN_DIR)' | Out-Null"
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/src' | Out-Null"
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/gba' | Out-Null"
+	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/mgba' | Out-Null"
+	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/mgba/src' | Out-Null"
 endif
 
 $(WORKER_TARGET): dirs $(WORKER_OBJS)
@@ -74,6 +89,9 @@ $(WORKER_TARGET): dirs $(WORKER_OBJS)
 
 $(LEARNER_TARGET): dirs $(LEARNER_OBJS)
 	$(CC) $(LEARNER_OBJS) -o $@ $(LDFLAGS)
+
+$(RUN_TARGET): dirs $(RUN_OBJS)
+	$(CC) $(RUN_OBJS) -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/%.o: %.c | dirs
 	$(CC) $(CFLAGS) -c $< -o $@
