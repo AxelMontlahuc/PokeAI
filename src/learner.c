@@ -343,7 +343,7 @@ int main(int argc, char** argv) {
         ENTROPY_COEFF = ent_coeff_eff;
         int mb_size = (total_traj >= MB_TRAJ_THRESHOLD) ? MB_SIZE_DEFAULT : total_traj;
 
-        int* indices = (int*)malloc(sizeof(int) * total_traj);
+        int* indices = malloc(sizeof(int) * total_traj);
         for (int i = 0; i < total_traj; i++) indices[i] = i;
 
         BackpropStats st = {0};
@@ -356,7 +356,7 @@ int main(int argc, char** argv) {
             }
             for (int s = 0; s < total_traj; s += mb_size) {
                 int count = (s + mb_size <= total_traj) ? mb_size : (total_traj - s);
-                trajectory** mb = (trajectory**)malloc(sizeof(trajectory*) * count);
+                trajectory** mb = malloc(sizeof(trajectory*) * count);
                 for (int m = 0; m < count; m++) mb[m] = flat[indices[s + m]];
                 backpropagation(network, lr, steps, mb, count, temperature, &st);
                 free(mb);

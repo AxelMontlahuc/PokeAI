@@ -11,14 +11,14 @@ const char* QUEUE_DIR = "queue";
 const char* LOCKS_DIR = "locks";
 char* CHECKPOINT_PATH = "checkpoints/model-last.sav";
 
-const char* ROM_PATH = "/home/axel_montlahuc_prog/PokeAI/ROM/pokemon.gba";
-const char* CORE_PATH = "/home/axel_montlahuc_prog/libretro-super/dist/unix/mgba_libretro.so";
-const char* SCREEN_PATH_PREFIX = "/home/axel_montlahuc_prog/PokeAI/screen/";
-char SCREEN_PATH[512] = "/home/axel_montlahuc_prog/PokeAI/screen/1.bmp";
-const char* SAVESTATE_PATH = "/home/axel_montlahuc_prog/PokeAI/ROM/start.sav";
+const char* ROM_PATH = "ROM/pokemon.gba";
+const char* CORE_PATH = "../libretro-super/dist/unix/mgba_libretro.so";
+const char* SCREEN_PATH_PREFIX = "screen/";
+char SCREEN_PATH[512] = "screen/1.bmp";
+const char* SAVESTATE_PATH = "ROM/start.sav";
 
 const int SPEED = 120;
-const int BUTTON_PRESS_MS = 150;
+const int BUTTON_PRESS_MS = 70;
 
 int WORKER_TRAJECTORIES = 8;
 int WORKER_STEPS = 256;

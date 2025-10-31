@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
 
         temperature = fmax(TEMP_MIN, TEMP_MAX * pow(TEMP_DECAY, (double)episode));
 
-        trajectory** batch = (trajectory**)malloc(WORKER_BATCH_SIZE * sizeof(trajectory*));
+        trajectory** batch = malloc(WORKER_BATCH_SIZE * sizeof(trajectory*));
         assert(batch != NULL);
         for (int b=0; b<WORKER_BATCH_SIZE; b++) {
             batch[b] = runTrajectory(network, WORKER_STEPS, temperature);

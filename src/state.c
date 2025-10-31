@@ -67,13 +67,13 @@ void convertState(state s, double* out) {
 
     for (int k=0; k<32; k++) {
         for (int l=0; l<32; l++) {
-            out[6*8 + 9 + k*32 + l] = (double)s.bg0[k][l] / 2048.0 - 0.5;
+            out[6*8 + 9 + k*32 + l] = (double)s.bg0[k][l] / 6000.0 - 1.0;
         }
     }
 
     for (int k=0; k<32; k++) {
         for (int l=0; l<32; l++) {
-            out[6*8 + 9 + 32*32 + k*32 + l] = (double)s.bg2[k][l] / 2048.0 - 0.5;
+            out[6*8 + 9 + 32*32 + k*32 + l] = (double)s.bg2[k][l] / 6000.0 - 1.0;
         }
     }
 }
