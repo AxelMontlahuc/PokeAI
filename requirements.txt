@@ -1,0 +1,4 @@
+pandas>=1.0
+matplotlib>=3.0
+# optional for interactive HTML output
+plotly>=5.0
