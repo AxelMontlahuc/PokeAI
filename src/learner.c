@@ -302,6 +302,16 @@ int main(int argc, char** argv) {
         printf("  Rewards   : avg/step=%-8.5f  avg/traj=%-8.5f  p10=%-8.5f  p50=%-8.5f  p90=%-8.5f\n", avg_step_reward, avg_traj_return, p10, p50, p90);
         printf("  Entropy   : H=%-7.4f (mean across steps)\n", avg_entropy);
 
+        static double ENT_BASE = -1.0;
+        if (ENT_BASE < 0.0) ENT_BASE = ENTROPY_COEFF;
+        const double ETA = 0.05; 
+        const double ENT_MAX = 5.0 * ENT_BASE;
+
+        double proposed = ENTROPY_COEFF * exp(ETA * (H_TARGET - avg_entropy));
+        if (proposed < ENTROPY_MIN) proposed = ENTROPY_MIN;
+        if (proposed > ENT_MAX)     proposed = ENT_MAX;
+        ENTROPY_COEFF = proposed;
+
         if (count_steps > 0) {
             double mean_v = sum_values / (double)count_steps;
             double var_v = fmax(0.0, (sumsq_values / (double)count_steps) - (mean_v * mean_v));
@@ -336,11 +346,8 @@ int main(int argc, char** argv) {
             normPNL(adv_flat, total_steps);
         }
 
-        double warmup = (episode <= WARMUP_EPISODES) ? (fmax(MIN_WARMUP_FACTOR, (double)episode / (double)WARMUP_EPISODES)) : 1.0;
-        double lr = BASE_LR * pow(LR_DECAY, (double)episode) * warmup;
-        
-        double ent_coeff_eff = fmax(ENTROPY_MIN, ENTROPY_COEFF * pow(ENTROPY_DECAY, (double)episode));
-        ENTROPY_COEFF = ent_coeff_eff;
+    double warmup = (episode <= WARMUP_EPISODES) ? (fmax(MIN_WARMUP_FACTOR, (double)episode / (double)WARMUP_EPISODES)) : 1.0;
+    double lr = BASE_LR * pow(LR_DECAY, (double)episode) * warmup;
         int mb_size = (total_traj >= MB_TRAJ_THRESHOLD) ? MB_SIZE_DEFAULT : total_traj;
 
         int* indices = malloc(sizeof(int) * total_traj);

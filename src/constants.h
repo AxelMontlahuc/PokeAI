@@ -50,6 +50,7 @@ extern double GAE_LAMBDA;
 extern double ENTROPY_COEFF;
 extern double ENTROPY_DECAY;
 extern double ENTROPY_MIN;
+extern const double H_TARGET;
 extern double VALUE_COEFF;
 extern double VALUE_CLIP_EPS;
 extern double GRAD_CLIP_NORM;

@@ -46,6 +46,7 @@ double GAE_LAMBDA = 0.95;
 double ENTROPY_COEFF = 0.02;
 double ENTROPY_DECAY = 0.995;
 double ENTROPY_MIN = 0.005;
+const double H_TARGET = 1.2;
 double VALUE_COEFF = 0.50;
 double VALUE_CLIP_EPS = 0.20;
 double GRAD_CLIP_NORM = 100.0;
