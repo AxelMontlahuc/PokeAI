@@ -1,22 +1,22 @@
 #include "reward.h"
 
 bool HOUSE_FLAG = false;
-bool ROOM_FLAG = false;
-bool CLOCK_FLAG = false;
+// bool ROOM_FLAG = false;
+// bool CLOCK_FLAG = false;
 bool OUTDOOR_FLAG = false;
 bool OPP_HOUSE_FLAG = false;
 bool OPP_ROOM_FLAG = false;
-bool ROUTE_101_FLAG = false;
+//bool ROUTE_101_FLAG = false;
 
 double pnl(state s, state s_next) {
     double pnl = -0.005;
 
     if (!HOUSE_FLAG && s_next.zone == 1) {
         HOUSE_FLAG = true;
-        pnl += 1.5;
+        pnl += 1.1;
     }
 
-    if (!ROOM_FLAG && s_next.zone == 257) {
+    /*if (!ROOM_FLAG && s_next.zone == 257) {
         ROOM_FLAG = true;
         pnl += 1.7;
     }
@@ -29,6 +29,11 @@ double pnl(state s, state s_next) {
     if (CLOCK_FLAG && !OUTDOOR_FLAG && s_next.zone == 2304) {
         OUTDOOR_FLAG = true;
         pnl += 1.5;
+    } */
+
+    if (!OUTDOOR_FLAG && s_next.zone == 2304) {
+        OUTDOOR_FLAG = true;
+        pnl += 1.1;
     }
 
     if (!OPP_HOUSE_FLAG && s_next.zone == 513) {
@@ -49,7 +54,7 @@ double pnl(state s, state s_next) {
         pnl += 2.0;
     }
 
-    if (!ROUTE_101_FLAG && s_next.zone == 4096) {
+    /*if (!ROUTE_101_FLAG && s_next.zone == 4096) {
         ROUTE_101_FLAG = true;
         pnl += 2.0;
     }
@@ -70,7 +75,7 @@ double pnl(state s, state s_next) {
 
     if (s.enemy[1] > 0 && s_next.enemy[1] == 0) {
         pnl += 2.0;
-    }
+    }*/
 
     return pnl;
 }
@@ -108,12 +113,16 @@ void computeGAE(double* rewards, double* values, int steps, double gamma, double
     }
 }
 
+bool stopCondition() {
+    return OPP_ROOM_FLAG;
+}
+
 void resetFlags() {
     HOUSE_FLAG = false;
-    ROOM_FLAG = false;
-    CLOCK_FLAG = false;
+    //ROOM_FLAG = false;
+    //CLOCK_FLAG = false;
     OUTDOOR_FLAG = false;
     OPP_HOUSE_FLAG = false;
     OPP_ROOM_FLAG = false;
-    ROUTE_101_FLAG = false;
+    //ROUTE_101_FLAG = false;
 }
