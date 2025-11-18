@@ -78,8 +78,15 @@ static void die(const char *fmt, ...) {
 
 
 static void core_log(enum retro_log_level level, const char *fmt, ...) {
-	(void)level; 
-	(void)fmt;
+	static const char * levelstr[] = { "dbg", "inf", "wrn", "err" };
+	char buffer[4096] = {0};
+	va_list va;
+	va_start(va, fmt);
+	vsnprintf(buffer, sizeof(buffer), fmt, va);
+	va_end(va);
+	if (level < 0 || level > RETRO_LOG_ERROR) level = RETRO_LOG_INFO;
+	fprintf(stderr, "[%s] %s", levelstr[level], buffer);
+	fflush(stderr);
 }
 
 
@@ -249,9 +256,9 @@ static void core_load(const char *sofile) {
 }
 
 static void core_load_game(const char *filename) {
-	struct retro_system_av_info av = (struct retro_system_av_info){0};
-	struct retro_system_info system = (struct retro_system_info){0};
-	struct retro_game_info info = (struct retro_game_info){0};
+	struct retro_system_av_info av = {0};
+	struct retro_system_info system = {0};
+	struct retro_game_info info = {0};
 	info.path = filename;
 	FILE *file = fopen(filename, "rb");
 
@@ -434,11 +441,19 @@ int gba_button(int button_code) {
 	return 0;
 }
 
-int gba_reset(void) {
-	if (g_retro.initialized && g_retro.retro_reset) {
-		g_retro.retro_reset();
-		return 0;
-	}
+int gba_reset(const char* savestate) {
+	FILE *fd = fopen(savestate, "rb");
+	if (!fd)
+		die("Failed to find savestate file '%s'", savestate);
+
+	void *saveblob = malloc(g_retro.retro_serialize_size());
+	size_t rdb = fread(saveblob, 1, g_retro.retro_serialize_size(), fd);
+
+	if (!g_retro.retro_unserialize(saveblob, rdb))
+		die("Failed to load savestate, core returned error");
+	fclose(fd);
+	free(saveblob);
+
 	return 0;
 }
 

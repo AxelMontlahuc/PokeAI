@@ -82,15 +82,6 @@ static int chooseAction(double* p, int n) {
     return n - 1;
 }
 
-void startProcedure() {
-    gba_run(300);
-    for (int i=0; i<100; i++) {
-        gba_button(4);
-        gba_run(SPEED);
-    }
-    gba_screen(SCREEN_PATH);
-}
-
 trajectory* runTrajectory(LSTM* network, int steps, double temperature) {
     trajectory* traj = initTrajectory(steps);
     assert(traj != NULL);
@@ -173,9 +164,9 @@ int main(int argc, char** argv) {
             printf("[Worker] Reloaded checkpoint (episode=%d)\n", episode);
         }
 
-        if (batches_done_in_episode == 0) {
-            gba_reset();
-            startProcedure();
+        if (batches_done_in_episode == 0 || stopCondition()) {
+            batches_done_in_episode = 0; 
+            gba_reset(SAVESTATE_PATH);
             resetFlags();
         }
 
