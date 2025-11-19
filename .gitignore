@@ -14,7 +14,6 @@ mGBA-interface/build
 *.tmp
 *.lock
 *.exe
-*.sav
 *.gba
 *.gb
 *.gbc
