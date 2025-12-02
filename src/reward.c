@@ -2,7 +2,7 @@
 
 bool HOUSE_FLAG = false;
 // bool ROOM_FLAG = false;
-// bool CLOCK_FLAG = false;
+bool CLOCK_FLAG = false;
 bool OUTDOOR_FLAG = false;
 bool OPP_HOUSE_FLAG = false;
 bool OPP_ROOM_FLAG = false;
@@ -30,6 +30,10 @@ double pnl(state s, state s_next) {
         OUTDOOR_FLAG = true;
         pnl += 1.5;
     } */
+
+    if (!CLOCK_FLAG && s_next.clock == 80) {
+        CLOCK_FLAG = true;
+    }
 
     if (!OUTDOOR_FLAG && s_next.zone == 2304) {
         OUTDOOR_FLAG = true;
@@ -115,6 +119,10 @@ void computeGAE(double* rewards, double* values, int steps, double gamma, double
 
 bool stopCondition() {
     return OPP_ROOM_FLAG;
+}
+
+bool saveCondition() {
+    return CLOCK_FLAG;
 }
 
 void resetFlags() {

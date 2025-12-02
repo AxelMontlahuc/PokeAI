@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
         for (int b=0; b<WORKER_BATCH_SIZE; b++) freeTrajectory(batch[b]);
         free(batch);
 
-        if (stopCondition()) {
+        if (saveCondition()) {
             gba_savestate(SAVESTATE_PATH);
             break;
         }

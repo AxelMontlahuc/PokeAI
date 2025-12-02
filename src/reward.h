@@ -22,6 +22,7 @@ void computeGAE(
 	double* out_returns
 );
 bool stopCondition();
+bool saveCondition();
 void resetFlags();
 
 
