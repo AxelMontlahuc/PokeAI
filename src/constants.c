@@ -9,7 +9,11 @@ const char* HOST_ADDR = "127.0.0.1";
 
 const char* QUEUE_DIR = "queue";
 const char* LOCKS_DIR = "locks";
-char* CHECKPOINT_PATH = "checkpoints/model-last.sav";
+const char* SAVES_DIR = "saves";
+const char* LOGS_DIR = "logs";
+const char* SCREEN_DIR = "screen";
+const char* CHECKPOINT_DIR = "checkpoints";
+const char* CHECKPOINT_PATH = "checkpoints/model-last.sav";
 
 const char* ROM_PATH = "ROM/pokemon.gba";
 const char* CORE_PATH = "../libretro-super/dist/unix/mgba_libretro.so";

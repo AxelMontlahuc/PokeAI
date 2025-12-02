@@ -480,6 +480,23 @@ int gba_create(const char* core_so, const char* rom_path) {
 	return 0;
 }
 
+void gba_savestate(const char* save_path) {
+	FILE *fd = fopen(save_path, "wb");
+	if (!fd) {
+		fprintf(stderr, "Could not write savestate dump to '%s'", save_path);
+	} else {
+		size_t savsz = g_retro.retro_serialize_size();
+		void *saveblob = malloc(savsz);
+		if (!g_retro.retro_serialize(saveblob, savsz)) {
+			fprintf(stderr, "Could not generate savestate, core returned error");
+		} else {
+			fwrite(saveblob, 1, savsz, fd);
+		}
+		free(saveblob);
+		fclose(fd);
+	}
+}
+
 void gba_destroy() {
 	core_unload(); 
 }

@@ -60,17 +60,26 @@ RUN_SRC := \
 	src/state.c \
 	$(COMMON_SRC)
 
+# Savemaker binary
+SAVEMAKER_SRC := \
+	src/savemaker.c \
+	src/state.c \
+	$(COMMON_SRC)
+
 WORKER_OBJS := $(WORKER_SRC:%.c=$(BUILD_DIR)/%.o)
 LEARNER_OBJS := $(LEARNER_SRC:%.c=$(BUILD_DIR)/%.o)
 RUN_OBJS := $(RUN_SRC:%.c=$(BUILD_DIR)/%.o)
+SAVEMAKER_OBJS := $(SAVEMAKER_SRC:%.c=$(BUILD_DIR)/%.o)
 
 WORKER_TARGET := $(BIN_DIR)/worker$(EXE)
 LEARNER_TARGET := $(BIN_DIR)/learner$(EXE)
 RUN_TARGET := $(BIN_DIR)/run$(EXE)
+SAVEMAKER_TARGET := $(BIN_DIR)/savemaker$(EXE)
+
 
 .PHONY: all clean run dirs
 
-all: $(WORKER_TARGET) $(LEARNER_TARGET) $(RUN_TARGET)
+all: $(WORKER_TARGET) $(LEARNER_TARGET) $(RUN_TARGET) $(SAVEMAKER_TARGET)
 
 dirs:
 ifneq ($(UNAME_S),Windows)
@@ -92,6 +101,9 @@ $(LEARNER_TARGET): dirs $(LEARNER_OBJS)
 
 $(RUN_TARGET): dirs $(RUN_OBJS)
 	$(CC) $(RUN_OBJS) -o $@ $(LDFLAGS)
+
+$(SAVEMAKER_TARGET): dirs $(SAVEMAKER_OBJS)
+	$(CC) $(SAVEMAKER_OBJS) -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/%.o: %.c | dirs
 	$(CC) $(CFLAGS) -c $< -o $@

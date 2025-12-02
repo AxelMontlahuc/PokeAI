@@ -13,7 +13,11 @@ extern const char* HOST_ADDR;
 
 extern const char* QUEUE_DIR;
 extern const char* LOCKS_DIR;
-extern char* CHECKPOINT_PATH;
+extern const char* SAVES_DIR;
+extern const char* LOGS_DIR;
+extern const char* SCREEN_DIR;
+extern const char* CHECKPOINT_DIR;
+extern const char* CHECKPOINT_PATH;
 
 extern const char* ROM_PATH;
 extern const char* CORE_PATH;

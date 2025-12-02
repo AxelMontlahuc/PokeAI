@@ -126,9 +126,12 @@ int main(int argc, char** argv) {
     }
     snprintf(SCREEN_PATH, sizeof(SCREEN_PATH), "%s%d.bmp", SCREEN_PATH_PREFIX, ID);
 
-    ensure_dir("checkpoints");
+    ensure_dir(CHECKPOINT_DIR);
     ensure_dir(QUEUE_DIR);
     ensure_dir(LOCKS_DIR);
+    ensure_dir(SAVES_DIR);
+    ensure_dir(SCREEN_DIR);
+    ensure_dir(LOGS_DIR);
 
     unsigned int seed = (unsigned int)(time(NULL) * ID);
     srand(seed);
