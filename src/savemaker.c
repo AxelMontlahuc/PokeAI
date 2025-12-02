@@ -76,6 +76,10 @@ trajectory* runTrajectory(LSTM* network, int steps, double temperature) {
 
         state s_next = fetchState();
         traj->rewards[i] = pnl(traj->states[i], s_next);
+
+        if (saveCondition()) {
+            break;
+        }
     }
 
     free(input_vec);
@@ -118,15 +122,14 @@ int main(int argc, char** argv) {
         assert(batch != NULL);
         for (int b=0; b<WORKER_BATCH_SIZE; b++) {
             batch[b] = runTrajectory(network, WORKER_STEPS, temperature);
+            if (saveCondition()) {
+                gba_savestate(SAVESTATE_PATH);
+                break;
+            }
         }
 
         for (int b=0; b<WORKER_BATCH_SIZE; b++) freeTrajectory(batch[b]);
         free(batch);
-
-        if (saveCondition()) {
-            gba_savestate(SAVESTATE_PATH);
-            break;
-        }
     }
 
     freeLSTM(network);
