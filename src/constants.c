@@ -47,7 +47,7 @@ double TARGET_KL = 0.03;
 double GAMMA_DISCOUNT = 0.995;
 double GAE_LAMBDA = 0.95;
 
-double ENTROPY_COEFF = 0.02;
+double ENTROPY_COEFF = 0.0;
 double ENTROPY_DECAY = 0.995;
 double ENTROPY_MIN = 0.005;
 const double H_TARGET = 1.2;
