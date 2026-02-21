@@ -60,9 +60,23 @@ RUN_SRC := \
 	src/state.c \
 	$(COMMON_SRC)
 
-# Savemaker binary
 SAVEMAKER_SRC := \
 	src/savemaker.c \
+	src/state.c \
+	$(COMMON_SRC)
+
+TEST_STATE_SRC := \
+	src/test_state.c \
+	src/state.c \
+	$(COMMON_SRC)
+
+TEST_STATE_MGBA_SRC := \
+	src/test_state_mgba.c \
+	src/constants.c \
+	$(MGBA_SRC)
+
+SKIPINTRO_SRC := \
+	src/skipintro.c \
 	src/state.c \
 	$(COMMON_SRC)
 
@@ -70,16 +84,24 @@ WORKER_OBJS := $(WORKER_SRC:%.c=$(BUILD_DIR)/%.o)
 LEARNER_OBJS := $(LEARNER_SRC:%.c=$(BUILD_DIR)/%.o)
 RUN_OBJS := $(RUN_SRC:%.c=$(BUILD_DIR)/%.o)
 SAVEMAKER_OBJS := $(SAVEMAKER_SRC:%.c=$(BUILD_DIR)/%.o)
+TEST_STATE_OBJS := $(TEST_STATE_SRC:%.c=$(BUILD_DIR)/%.o)
+TEST_STATE_MGBA_OBJS := $(TEST_STATE_MGBA_SRC:%.c=$(BUILD_DIR)/%.o)
+SKIPINTRO_OBJS := $(SKIPINTRO_SRC:%.c=$(BUILD_DIR)/%.o)
 
 WORKER_TARGET := $(BIN_DIR)/worker$(EXE)
 LEARNER_TARGET := $(BIN_DIR)/learner$(EXE)
 RUN_TARGET := $(BIN_DIR)/run$(EXE)
 SAVEMAKER_TARGET := $(BIN_DIR)/savemaker$(EXE)
+TEST_STATE_TARGET := $(BIN_DIR)/test_state$(EXE)
+TEST_STATE_MGBA_TARGET := $(BIN_DIR)/test_state_mgba$(EXE)
+SKIPINTRO_TARGET := $(BIN_DIR)/skipintro$(EXE)
 
 
-.PHONY: all clean run dirs
+.PHONY: all clean run dirs test
 
-all: $(WORKER_TARGET) $(LEARNER_TARGET) $(RUN_TARGET) $(SAVEMAKER_TARGET)
+all: $(WORKER_TARGET) $(LEARNER_TARGET) $(RUN_TARGET) $(SAVEMAKER_TARGET) $(TEST_STATE_TARGET) $(TEST_STATE_MGBA_TARGET) $(SKIPINTRO_TARGET)
+
+test: $(TEST_STATE_TARGET) $(TEST_STATE_MGBA_TARGET)
 
 dirs:
 ifneq ($(UNAME_S),Windows)
@@ -104,6 +126,15 @@ $(RUN_TARGET): dirs $(RUN_OBJS)
 
 $(SAVEMAKER_TARGET): dirs $(SAVEMAKER_OBJS)
 	$(CC) $(SAVEMAKER_OBJS) -o $@ $(LDFLAGS)
+
+$(TEST_STATE_TARGET): dirs $(TEST_STATE_OBJS)
+	$(CC) $(TEST_STATE_OBJS) -o $@ $(LDFLAGS)
+
+$(TEST_STATE_MGBA_TARGET): dirs $(TEST_STATE_MGBA_OBJS)
+	$(CC) $(TEST_STATE_MGBA_OBJS) -o $@ $(LDFLAGS)
+
+$(SKIPINTRO_TARGET): dirs $(SKIPINTRO_OBJS)
+	$(CC) $(SKIPINTRO_OBJS) -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/%.o: %.c | dirs
 	$(CC) $(CFLAGS) -c $< -o $@

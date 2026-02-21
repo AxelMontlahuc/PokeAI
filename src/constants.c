@@ -1,6 +1,6 @@
 #include "constants.h"
 
-const int INPUT_SIZE = 6*8 + 4 + 3 + 2 + 2*32*32;
+const int INPUT_SIZE = 6*8 + 4 + 3 + 2 + 11*11;
 const int HIDDEN_SIZE = 256;
 
 int ID = 1;
@@ -19,7 +19,7 @@ const char* ROM_PATH = "ROM/pokemon.gba";
 const char* CORE_PATH = "../libretro-super/dist/unix/mgba_libretro.so";
 const char* SCREEN_PATH_PREFIX = "screen/";
 char SCREEN_PATH[512] = "screen/1.bmp";
-const char* SAVESTATE_PATH = "saves/clock.sav";
+const char* SAVESTATE_PATH = "saves/skipintro.sav";
 
 const int SPEED = 120;
 const int BUTTON_PRESS_MS = 70;

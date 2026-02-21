@@ -346,8 +346,130 @@ static inline uint16_t read16(uint32_t addr) {
 	long v = gba_ram(addr, 2);
 	return (v < 0) ? 0 : (uint16_t)(v & 0xFFFF);
 }
+static inline uint32_t read32(uint32_t addr) {
+	long v = gba_ram(addr, 4);
+	return (v < 0) ? 0 : (uint32_t)(v & 0xFFFFFFFF);
+}
 
-int gba_state(int* team_out, int* enemy_out, int* pp_out, int* zone_out, int* clock_out, int bg0_out[32][32], int bg2_out[32][32]) {
+// Returns: behavior byte (0x00=walkable, 0x01=solid/wall, 0x02-0x69=various interactables)
+static uint8_t get_tile_behavior(uint16_t tile_id, uint32_t primary_tileset, uint32_t secondary_tileset) {
+	uint32_t tileset_ptr;
+	uint16_t local_id;
+	
+	if (tile_id < 640) {
+		tileset_ptr = primary_tileset;
+		local_id = tile_id;
+	} else {
+		tileset_ptr = secondary_tileset;
+		local_id = tile_id - 640;
+	}
+	
+	if (tileset_ptr == 0) return 0;
+	
+	// Behavior/attributes pointer is at tileset + 0x10
+	uint32_t attr_ptr = read32(tileset_ptr + 0x10);
+	if (attr_ptr == 0 || attr_ptr < 0x08000000) return 0;
+	
+	// Each metatile has 4 bytes of attributes, behavior is first byte
+	uint32_t behavior_addr = attr_ptr + (uint32_t)local_id * 4;
+	return read8(behavior_addr);
+}
+
+// Classify behavior byte: 0=normal, 1=interactable
+// Only used to detect interactable tiles; collision bits handle solid
+static int classify_behavior(uint8_t behavior) {
+	switch (behavior) {
+		case 0x08: return 1;   // Houses Door
+		case 0x28: return 1;   // Lab door
+		case 0xAE: return 1;   // General doors with a 1 offset
+		case 0x41: return 1;   // Random door thing
+		default:   return 0;
+	}
+}
+
+// Read 11x11 behavior map centered on player position
+// Uses direct map layout pointer at 0x02037318
+void gba_behavior_map(int behavior_out[11][11], int* player_x, int* player_y) {
+	// Direct map layout pointer (not header pointer)
+	uint32_t layout_ptr = read32(0x02037318);
+	if (layout_ptr == 0 || layout_ptr < 0x08000000) {
+		// Layout pointer usually points to ROM (0x08xxxxxx), fall back to zeros
+		for (int r = 0; r < 11; r++)
+			for (int c = 0; c < 11; c++)
+				behavior_out[r][c] = 0;
+		*player_x = 0;
+		*player_y = 0;
+		return;
+	}
+	
+	// Map dimensions: width at layout+0x00, height at layout+0x04
+	uint32_t map_width = read32(layout_ptr + 0x00);
+	uint32_t map_height = read32(layout_ptr + 0x04);
+	
+	// Sanity check dimensions
+	if (map_width == 0 || map_width > 1000 || map_height == 0 || map_height > 1000) {
+		for (int r = 0; r < 11; r++)
+			for (int c = 0; c < 11; c++)
+				behavior_out[r][c] = 0;
+		*player_x = 0;
+		*player_y = 0;
+		return;
+	}
+	
+	// Layout: width(4), height(4), border(4), tile_data(4), ts1_header(4), ts2_header(4)
+	// Skip border pointer at +0x08
+	uint32_t map_data = read32(layout_ptr + 0x0C);
+	uint32_t primary_tileset = read32(layout_ptr + 0x10);
+	uint32_t secondary_tileset = read32(layout_ptr + 0x14);
+	
+	// Player X/Y map coordinates at 0x02037360/62 (Pokémon Emerald)
+	uint16_t px = read16(0x02037360);
+	uint16_t py = read16(0x02037362);
+	*player_x = (int)px;
+	*player_y = (int)py;
+	
+	// Pokemon maps have a border offset of 7 tiles
+	// Player coords include this border, so subtract it for map data indexing
+	const int BORDER = 7;
+	int adj_x = (int)px - BORDER;
+	int adj_y = (int)py - BORDER;
+	
+	// Read 11x11 grid centered on player (using adjusted coordinates)
+	for (int dr = -5; dr <= 5; dr++) {
+		for (int dc = -5; dc <= 5; dc++) {
+			int mx = adj_x + dc;
+			int my = adj_y + dr;
+			int row = dr + 5;
+			int col = dc + 5;
+			
+			// Bounds check against actual map dimensions
+			if (mx < 0 || my < 0 || (uint32_t)mx >= map_width || (uint32_t)my >= map_height) {
+				behavior_out[row][col] = -1;  // Out of bounds = solid
+				continue;
+			}
+			
+			// Each metatile entry in map data is 2 bytes
+			// Bits 0-9: tile ID, bits 10-11: collision, bits 12-15: elevation
+			uint32_t tile_addr = map_data + (uint32_t)(my * (int)map_width + mx) * 2;
+			uint16_t tile_entry = read16(tile_addr);
+			uint16_t tile_id = tile_entry & 0x03FF;  // bits 0-9
+			uint8_t collision = (tile_entry >> 10) & 0x03;  // bits 10-11
+			
+			// Check behavior for interactable (takes priority over collision)
+			uint8_t behavior = get_tile_behavior(tile_id, primary_tileset, secondary_tileset);
+			int classified = classify_behavior(behavior);
+			if (classified == 1) {
+				behavior_out[row][col] = 1;  // Interactable always shows through
+			} else if (collision != 0) {
+				behavior_out[row][col] = -1;  // Collision flag = solid
+			} else {
+				behavior_out[row][col] = 0;  // Walkable
+			}
+		}
+	}
+}
+
+int gba_state(int* team_out, int* enemy_out, int* pp_out, int* zone_out, int* clock_out, int behavior_out[11][11], int* player_x, int* player_y) {
 	const uint32_t bases[6] = { 0x02024540u, 0x020245A4u, 0x02024608u, 0x0202466Cu, 0x020246D0u, 0x02024734u };
 	for (int i = 0; i < 6; ++i) {
 		uint32_t base = bases[i];
@@ -384,33 +506,7 @@ int gba_state(int* team_out, int* enemy_out, int* pp_out, int* zone_out, int* cl
 	*zone_out  = read16(0x020322E4u);
 	*clock_out = read8 (0x0203CD9Cu);
 
-	for (int i = 0; i < 32; ++i) {
-		for (int j = 0; j < 32; ++j) {
-			uint32_t addr = 0x0600F800u + (uint32_t)((i * 32 + j) * 2);
-			int w = read16(addr);
-			bg0_out[i][j] = w;
-		}
-	}
-
-	uint8_t xoff = read8(0x04000018u);
-	uint8_t yoff = read8(0x0400001Au);
-
-	int raw[32*32];
-	for (int i = 0; i < 32; ++i) {
-		for (int j = 0; j < 32; ++j) {
-			uint32_t addr = 0x0600E000u + (uint32_t)((i * 32 + j) * 2);
-			raw[i*32 + j] = read16(addr);
-		}
-	}
-	int tx = (int)(xoff / 8);
-	int ty = (int)(yoff / 8);
-	for (int r = 0; r < 32; ++r) {
-		for (int c = 0; c < 32; ++c) {
-			int sr = (r + ty) & 31;
-			int sc = (c + tx) & 31;
-			bg2_out[r][c] = raw[sr*32 + sc];
-		}
-	}
+	gba_behavior_map(behavior_out, player_x, player_y);
 
 	return 0;
 }

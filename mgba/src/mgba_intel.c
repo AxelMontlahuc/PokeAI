@@ -60,3 +60,38 @@ int read_state(SOCKET sock, int* team_out, int* enemy_out, int* pp_out, int* zon
     free(buf);
     return 0;
 }
+
+int read_behavior_map(SOCKET sock, int behavior_out[11][11], int* player_x, int* player_y) {
+    const char* cmd = "bulk.readBehaviorMap";
+
+    if (send(sock, cmd, (int)strlen(cmd), 0) < 0) {
+        return -WSAGetLastError();
+    }
+
+    const int BUF = 4096;
+    char* buf = (char*)malloc(BUF);
+    
+    int recv_size = recv(sock, buf, BUF - 1, 0);
+    if (recv_size == SOCKET_ERROR) {
+        int err = -WSAGetLastError();
+        free(buf);
+        return err;
+    }
+    buf[recv_size] = '\0';
+
+    const char* p = buf;
+
+    // First two values are player position
+    *player_x = parse_next_int(&p);
+    *player_y = parse_next_int(&p);
+
+    // Then 11x11 = 121 behavior values
+    for (int r = 0; r < 11; r++) {
+        for (int c = 0; c < 11; c++) {
+            behavior_out[r][c] = parse_next_int(&p);
+        }
+    }
+
+    free(buf);
+    return 0;
+}

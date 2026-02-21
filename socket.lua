@@ -193,10 +193,12 @@ function messageRouter(rawMessage)
 	elseif messageType == "mgba-http.button.hold" then manageButton(messageValue1, messageValue2)
 	elseif messageType == "memoryDomain.read8" then returnValue = emu.memory[messageValue1]:read8(tonumber(messageValue2))
 	elseif messageType == "memoryDomain.read16" then returnValue = emu.memory[messageValue1]:read16(tonumber(messageValue2))
+	elseif messageType == "memoryDomain.read32" then returnValue = emu.memory[messageValue1]:read32(tonumber(messageValue2))
 	elseif messageType == "memoryDomain.readRange" then returnValue = emu.memory[messageValue1]:readRange(tonumber(messageValue2), tonumber(messageValue3))
 	elseif messageType == "mgba-http.emu.reset" then returnValue = emu:reset()
 	elseif messageType == "mgba-http.emu.start" then returnValue = emu:loadStateSlot(1, 31)
 	elseif messageType == "bulk.readState" then returnValue = bulkReadState()
+	elseif messageType == "bulk.readBehaviorMap" then returnValue = bulkReadBehaviorMap()
 	elseif (rawMessage == "<|ACK|>") then formattedLog("Connecting.")
 	elseif (rawMessage ~= nil or rawMessage ~= '') then formattedLog("Unable to route raw message: " .. rawMessage)
 	else formattedLog(messageType)	
@@ -338,6 +340,205 @@ function bulkReadState()
 	for i=1,1024 do push(bg0[i]) end
 	for i=1,1024 do push(bg2[i]) end
 
+	return table.concat(vals, ",")
+end
+
+-- Read a 32-bit value from WRAM (little-endian)
+local function readWram32(addr)
+	local lo = emu.memory.wram:read16(addr)
+	local hi = emu.memory.wram:read16(addr + 2)
+	return lo + hi * 65536
+end
+
+-- Read a 32-bit value from ROM/cart (little-endian)
+-- mGBA uses cart0 for ROM memory, not 'rom'
+local function readRom32(addr)
+	-- ROM addresses are 0x08xxxxxx, but we read with offset from base
+	local offset = addr - 0x08000000
+	local lo = emu.memory.cart0:read16(offset)
+	local hi = emu.memory.cart0:read16(offset + 2)
+	return lo + hi * 65536
+end
+
+local function readRom16(addr)
+	local offset = addr - 0x08000000
+	return emu.memory.cart0:read16(offset)
+end
+
+local function readRom8(addr)
+	local offset = addr - 0x08000000
+	return emu.memory.cart0:read8(offset)
+end
+
+-- Get behavior byte for a metatile
+local function getTileBehavior(tile_id, primary_ts, secondary_ts)
+	local tileset_ptr, local_id
+	
+	if tile_id < 640 then
+		tileset_ptr = primary_ts
+		local_id = tile_id
+	else
+		tileset_ptr = secondary_ts
+		local_id = tile_id - 640
+	end
+	
+	if tileset_ptr == 0 or tileset_ptr < 0x08000000 then return 0 end
+	
+	-- Behavior/attributes pointer is at tileset_header + 0x10
+	local attr_ptr = readRom32(tileset_ptr + 0x10)
+	if attr_ptr == 0 or attr_ptr < 0x08000000 then return 0 end
+	
+	-- Each metatile has 4 bytes of attributes, behavior is byte 0
+	local behavior_addr = attr_ptr + local_id * 4
+	return readRom8(behavior_addr)
+end
+
+-- Classify behavior byte: 0=normal, 1=interactable
+-- Only used to detect interactable tiles; collision bits handle solid
+local function classifyBehavior(behavior)
+	-- Interactable behaviors
+	if behavior == 0x08 then return 1 end    -- Houses Door
+	if behavior == 0x28 then return 1 end    -- Lab door
+	if behavior == 0xAE then return 1 end	 -- General doors with a 1 offset?
+	if behavior == 0x41 then return 1 end	 -- Random door thing
+	return 0
+end
+
+function bulkReadBehaviorMap()
+	local vals = {}
+	local function push(v)
+		vals[#vals+1] = tostring(v)
+	end
+	
+	-- Map layout pointer at 0x02037318 (WRAM)
+	local layout_ptr = readWram32(0x02037318)
+	
+	-- Player position at 0x02037360/62
+	local player_x = emu.memory.wram:read16(0x02037360)
+	local player_y = emu.memory.wram:read16(0x02037362)
+	push(player_x)
+	push(player_y)
+	
+	-- Debug: print layout info to console
+	console:log(string.format("Layout ptr: 0x%08X, Player: (%d, %d)", layout_ptr, player_x, player_y))
+	
+	-- Check if layout pointer is valid (should point to ROM 0x08xxxxxx)
+	if layout_ptr == 0 or layout_ptr < 0x08000000 or layout_ptr > 0x09FFFFFF then
+		-- Invalid pointer, return zeros
+		console:log("Invalid layout pointer!")
+		for i = 1, 121 do push(0) end
+		return table.concat(vals, ",")
+	end
+	
+	-- Read layout structure from ROM
+	-- Try: width(4), height(4), border(4), tile_data(4), ts1_header(4), ts2_header(4)
+	local map_width = readRom32(layout_ptr + 0x00)
+	local map_height = readRom32(layout_ptr + 0x04)
+	local border_ptr = readRom32(layout_ptr + 0x08)  -- border tiles pointer (skip)
+	local map_data = readRom32(layout_ptr + 0x0C)    -- actual map data
+	local primary_ts = readRom32(layout_ptr + 0x10)  -- primary tileset
+	local secondary_ts = readRom32(layout_ptr + 0x14) -- secondary tileset
+	
+	console:log(string.format("  Width: %d, Height: %d", map_width, map_height))
+	console:log(string.format("  Border ptr: 0x%08X (skipped)", border_ptr))
+	console:log(string.format("  Map data: 0x%08X", map_data))
+	console:log(string.format("  Primary TS header: 0x%08X, Secondary TS header: 0x%08X", primary_ts, secondary_ts))
+	
+	-- Debug: Show the behavior array pointers from each tileset header
+	if primary_ts >= 0x08000000 then
+		console:log(string.format("  Primary TS header contents:"))
+		console:log(string.format("    +0x00: 0x%08X", readRom32(primary_ts + 0x00)))
+		console:log(string.format("    +0x04: 0x%08X", readRom32(primary_ts + 0x04)))
+		console:log(string.format("    +0x08: 0x%08X", readRom32(primary_ts + 0x08)))
+		console:log(string.format("    +0x0C: 0x%08X", readRom32(primary_ts + 0x0C)))
+		console:log(string.format("    +0x10: 0x%08X", readRom32(primary_ts + 0x10)))
+		console:log(string.format("    +0x14: 0x%08X", readRom32(primary_ts + 0x14)))
+		local primary_behavior = readRom32(primary_ts + 0x10)
+		console:log(string.format("  Primary behavior array: 0x%08X", primary_behavior))
+		-- Show first few behavior bytes
+		if primary_behavior >= 0x08000000 then
+			local b0 = readRom8(primary_behavior + 0)
+			local b1 = readRom8(primary_behavior + 4)
+			local b2 = readRom8(primary_behavior + 8)
+			local b3 = readRom8(primary_behavior + 12)
+			console:log(string.format("    First behaviors: %02X %02X %02X %02X", b0, b1, b2, b3))
+		end
+	end
+	if secondary_ts >= 0x08000000 then
+		local secondary_behavior = readRom32(secondary_ts + 0x10)
+		console:log(string.format("  Secondary behavior array: 0x%08X", secondary_behavior))
+	end
+	
+	-- Sanity check
+	if map_width == 0 or map_width > 1000 or map_height == 0 or map_height > 1000 then
+		console:log("Invalid map dimensions!")
+		for i = 1, 121 do push(0) end
+		return table.concat(vals, ",")
+	end
+	
+	-- Pokemon maps have a border offset of 7 tiles
+	-- Player coords are in "map space" which includes this border
+	-- So we need to subtract the border when indexing into map_data
+	local BORDER = 7
+	local adj_x = player_x - BORDER
+	local adj_y = player_y - BORDER
+	
+	console:log(string.format("  Adjusted pos: (%d, %d)", adj_x, adj_y))
+	
+	-- Debug: Print tile IDs, collision bits, and behavior bytes
+	-- Tile entry format: bits 0-9 = tile ID, bits 10-11 = collision, bits 12-15 = elevation
+	console:log("  Tile data (11x11 grid): [TileID:Coll:Behavior]")
+	for dr = -5, 5 do
+		local row_str = "    "
+		for dc = -5, 5 do
+			local mx = adj_x + dc
+			local my = adj_y + dr
+			
+			if mx < 0 or my < 0 or mx >= map_width or my >= map_height then
+				row_str = row_str .. " [OOB]"
+			else
+				local tile_addr = map_data + (my * map_width + mx) * 2
+				local tile_entry = readRom16(tile_addr)
+				local tile_id = tile_entry % 1024  -- bits 0-9
+				local collision = math.floor(tile_entry / 1024) % 4  -- bits 10-11
+				local behavior = getTileBehavior(tile_id, primary_ts, secondary_ts)
+				row_str = row_str .. string.format(" [%03d:%d:%02X]", tile_id, collision, behavior)
+			end
+		end
+		console:log(row_str)
+	end
+	
+	-- Read 11x11 grid centered on player (using adjusted coordinates)
+	for dr = -5, 5 do
+		for dc = -5, 5 do
+			local mx = adj_x + dc
+			local my = adj_y + dr
+			
+			-- Bounds check against actual map dimensions
+			if mx < 0 or my < 0 or mx >= map_width or my >= map_height then
+				push(-1)  -- Out of bounds = solid
+			else
+				-- Each metatile entry is 2 bytes
+				-- Bits 0-9: tile ID, bits 10-11: collision, bits 12-15: elevation
+				local tile_addr = map_data + (my * map_width + mx) * 2
+				local tile_entry = readRom16(tile_addr)
+				local tile_id = tile_entry % 1024  -- bits 0-9
+				local collision = math.floor(tile_entry / 1024) % 4  -- bits 10-11
+				
+				-- Check behavior for interactable (takes priority over collision)
+				local behavior = getTileBehavior(tile_id, primary_ts, secondary_ts)
+				local classified = classifyBehavior(behavior)
+				if classified == 1 then
+					push(1)  -- Interactable always shows through
+				elseif collision ~= 0 then
+					push(-1)  -- Collision flag = solid
+				else
+					push(0)  -- Walkable
+				end
+			end
+		end
+	end
+	
 	return table.concat(vals, ",")
 end
 

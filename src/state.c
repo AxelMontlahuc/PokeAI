@@ -5,7 +5,8 @@ state fetchState() {
     
     int team_raw[6*8];
 
-    gba_state(team_raw, s.enemy, s.PP, &s.zone, &s.clock, s.bg0, s.bg2);
+    gba_state(team_raw, s.enemy, s.PP, &s.zone, &s.clock, s.behavior, &s.player_x, &s.player_y);
+    s.exploration = 1;
 
     for (int i = 0; i < 6; i++) {
         int o = i * 8;
@@ -27,7 +28,14 @@ state fetchMGBAState(MGBAConnection conn) {
     
     int team_raw[6*8];
 
-    read_state(conn.sock, team_raw, s.enemy, s.PP, &s.zone, &s.clock, s.bg0, s.bg2);
+    // Read behavior map via socket
+    read_behavior_map(conn.sock, s.behavior, &s.player_x, &s.player_y);
+    s.exploration = 1;
+
+    // Read other state data
+    int bg0[32][32];
+    int bg2[32][32];
+    read_state(conn.sock, team_raw, s.enemy, s.PP, &s.zone, &s.clock, bg0, bg2);
 
     for (int i = 0; i < 6; i++) {
         int o = i * 8;
@@ -65,15 +73,9 @@ void convertState(state s, double* out) {
     out[6*8 + 7] = (double)s.zone / 255.0;
     out[6*8 + 8] = (double)s.clock / 255.0;
 
-    for (int k=0; k<32; k++) {
-        for (int l=0; l<32; l++) {
-            out[6*8 + 9 + k*32 + l] = (double)s.bg0[k][l] / 6000.0 - 1.0;
-        }
-    }
-
-    for (int k=0; k<32; k++) {
-        for (int l=0; l<32; l++) {
-            out[6*8 + 9 + 32*32 + k*32 + l] = (double)s.bg2[k][l] / 6000.0 - 1.0;
+    for (int r = 0; r < 11; r++) {
+        for (int c = 0; c < 11; c++) {
+            out[6*8 + 9 + r*11 + c] = (double)s.behavior[r][c];
         }
     }
 }
