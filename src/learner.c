@@ -276,6 +276,16 @@ int main(int argc, char** argv) {
         double avg_traj_return = (total_traj > 0) ? (sum_traj_returns / (double)total_traj) : 0.0;
         double avg_step_reward = (count_steps > 0) ? (sum_step_rewards / (double)count_steps) : 0.0;
 
+        /* Adaptive entropy coefficient: nudge ENTROPY_COEFF so that the
+           observed per-step entropy tracks H_TARGET.  When entropy drops
+           below target the coefficient is increased (encouraging more
+           exploration); when it rises above target it is decreased. */
+        if (avg_entropy < H_TARGET) {
+            ENTROPY_COEFF = fmin(ENTROPY_COEFF * 1.02 + 1e-5, 0.1);
+        } else {
+            ENTROPY_COEFF = fmax(ENTROPY_COEFF * 0.98, ENTROPY_MIN);
+        }
+
         int action_counts[ACTION_COUNT] = {0};
         
         for (int i = 0; i < total_traj; i++) {

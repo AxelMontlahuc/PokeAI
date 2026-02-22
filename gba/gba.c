@@ -538,6 +538,10 @@ int gba_button(int button_code) {
 }
 
 int gba_reset(const char* savestate) {
+	/* Clear any pending button holds so the new episode starts clean. */
+	memset(g_hold, 0, sizeof(g_hold));
+	memset(g_joy,  0, sizeof(g_joy));
+
 	FILE *fd = fopen(savestate, "rb");
 	if (!fd)
 		die("Failed to find savestate file '%s'", savestate);
