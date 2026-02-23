@@ -178,6 +178,10 @@ int main(int argc, char** argv) {
         trajectory** batch = malloc(WORKER_BATCH_SIZE * sizeof(trajectory*));
         assert(batch != NULL);
         for (int b=0; b<WORKER_BATCH_SIZE; b++) {
+            if (b > 0 && stopCondition()) {
+                gba_reset(SAVESTATE_PATH);
+                resetFlags();
+            }
             batch[b] = runTrajectory(network, WORKER_STEPS, temperature);
         }
 

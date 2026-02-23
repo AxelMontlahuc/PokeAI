@@ -375,6 +375,16 @@ static uint8_t get_tile_behavior(uint16_t tile_id, uint32_t primary_tileset, uin
 	return read8(behavior_addr);
 }
 
+// Special tile IDs that should override behavior classification
+// Maps tile_id -> behavior value for objects not distinguishable by behavior byte
+// Returns -99 when no override applies
+static int classify_tile_id(uint16_t tile_id) {
+	switch (tile_id) {
+		case 655:	 return 1;   // Clock
+		default:     return -99; // No override
+	}
+}
+
 // Classify behavior byte: 0=normal, 1=interactable
 // Only used to detect interactable tiles; collision bits handle solid
 static int classify_behavior(uint8_t behavior) {
@@ -385,6 +395,37 @@ static int classify_behavior(uint8_t behavior) {
 		case 0x41: return 1;   // Random door thing
 		default:   return 0;
 	}
+}
+
+// Check if map coordinate (mx, my) is a warp destination.
+// gMapHeader is at 0x02037318 in WRAM:
+//   +0x00 = mapLayout ptr  (already used)
+//   +0x04 = events ptr     -> MapEvents in ROM
+// MapEvents:
+//   +0x00 = objectEventCount (u8)
+//   +0x01 = warpCount (u8)
+//   +0x02 = coordEventCount (u8)
+//   +0x03 = bgEventCount (u8)
+//   +0x04 = objectEvents ptr (4)
+//   +0x08 = warps ptr (4)     -> array of WarpEvent
+// WarpEvent (8 bytes): x(s16) y(s16) elevation(u8) warpId(u8) mapNum(u8) mapGroup(u8)
+static int is_warp_tile(int mx, int my) {
+	uint32_t events_ptr = read32(0x0203731C);
+	if (events_ptr == 0 || events_ptr < 0x08000000) return 0;
+
+	uint8_t warp_count = read8(events_ptr + 0x01);
+	if (warp_count == 0 || warp_count > 64) return 0;
+
+	uint32_t warps_ptr = read32(events_ptr + 0x08);
+	if (warps_ptr == 0 || warps_ptr < 0x08000000) return 0;
+
+	for (int w = 0; w < (int)warp_count; w++) {
+		uint32_t warp_addr = warps_ptr + (uint32_t)w * 8;
+		int16_t wx = (int16_t)read16(warp_addr + 0x00);
+		int16_t wy = (int16_t)read16(warp_addr + 0x02);
+		if ((int)wx == mx && (int)wy == my) return 1;
+	}
+	return 0;
 }
 
 // Read 11x11 behavior map centered on player position
@@ -455,15 +496,23 @@ void gba_behavior_map(int behavior_out[11][11], int* player_x, int* player_y) {
 			uint16_t tile_id = tile_entry & 0x03FF;  // bits 0-9
 			uint8_t collision = (tile_entry >> 10) & 0x03;  // bits 10-11
 			
-			// Check behavior for interactable (takes priority over collision)
-			uint8_t behavior = get_tile_behavior(tile_id, primary_tileset, secondary_tileset);
-			int classified = classify_behavior(behavior);
-			if (classified == 1) {
-				behavior_out[row][col] = 1;  // Interactable always shows through
-			} else if (collision != 0) {
-				behavior_out[row][col] = -1;  // Collision flag = solid
+			// Check tile ID for special objects (takes highest priority)
+			int id_class = classify_tile_id(tile_id);
+			if (id_class != -99) {
+				behavior_out[row][col] = id_class;  // Special object
+			} else if (is_warp_tile(mx, my)) {
+				behavior_out[row][col] = 1;  // Warp/door
 			} else {
-				behavior_out[row][col] = 0;  // Walkable
+				// Fall back to behavior byte / collision classification
+				uint8_t behavior = get_tile_behavior(tile_id, primary_tileset, secondary_tileset);
+				int classified = classify_behavior(behavior);
+				if (classified == 1) {
+					behavior_out[row][col] = 1;  // Interactable always shows through
+				} else if (collision != 0) {
+					behavior_out[row][col] = -1;  // Collision flag = solid
+				} else {
+					behavior_out[row][col] = 0;  // Walkable
+				}
 			}
 		}
 	}

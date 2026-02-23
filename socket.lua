@@ -397,11 +397,53 @@ end
 -- Only used to detect interactable tiles; collision bits handle solid
 local function classifyBehavior(behavior)
 	-- Interactable behaviors
-	if behavior == 0x08 then return 1 end    -- Houses Door
-	if behavior == 0x28 then return 1 end    -- Lab door
-	if behavior == 0xAE then return 1 end	 -- General doors with a 1 offset?
-	if behavior == 0x41 then return 1 end	 -- Random door thing
+	-- if behavior == 0x08 then return 1 end    -- Houses Door
+	-- if behavior == 0x28 then return 1 end    -- Lab door
+	-- if behavior == 0xAE then return 1 end	 -- General doors with a 1 offset?
+	-- if behavior == 0x41 then return 1 end	 -- Random door thing
 	return 0
+end
+
+-- Special tile IDs that should override behavior classification
+-- Maps tile_id -> behavior value for objects not distinguishable by behavior byte
+-- Returns nil when no override applies
+local function classifyTileId(tile_id)
+	if tile_id == 655 then return 1 end      -- Clock
+	return nil  -- No override
+end
+
+-- Check if map coordinate (mx, my) is a warp destination.
+-- gMapHeader is at 0x02037318 in WRAM:
+--   +0x00 = mapLayout ptr  (already used)
+--   +0x04 = events ptr     -> MapEvents in ROM
+-- MapEvents:
+--   +0x00 = objectEventCount (u8)
+--   +0x01 = warpCount (u8)
+--   +0x02 = coordEventCount (u8)
+--   +0x03 = bgEventCount (u8)
+--   +0x04 = objectEvents ptr (4)
+--   +0x08 = warps ptr (4)     -> array of WarpEvent
+-- WarpEvent (8 bytes): x(s16) y(s16) elevation(u8) warpId(u8) mapNum(u8) mapGroup(u8)
+local function isWarpTile(mx, my)
+	local events_ptr = readWram32(0x0203731C)
+	if events_ptr == 0 or events_ptr < 0x08000000 then return false end
+
+	local warp_count = readRom8(events_ptr + 0x01)
+	if warp_count == 0 or warp_count > 64 then return false end
+
+	local warps_ptr = readRom32(events_ptr + 0x08)
+	if warps_ptr == 0 or warps_ptr < 0x08000000 then return false end
+
+	for w = 0, warp_count - 1 do
+		local warp_addr = warps_ptr + w * 8
+		local wx = readRom16(warp_addr + 0x00)
+		local wy = readRom16(warp_addr + 0x02)
+		-- Convert unsigned 16-bit to signed
+		if wx >= 0x8000 then wx = wx - 0x10000 end
+		if wy >= 0x8000 then wy = wy - 0x10000 end
+		if wx == mx and wy == my then return true end
+	end
+	return false
 end
 
 function bulkReadBehaviorMap()
@@ -525,15 +567,23 @@ function bulkReadBehaviorMap()
 				local tile_id = tile_entry % 1024  -- bits 0-9
 				local collision = math.floor(tile_entry / 1024) % 4  -- bits 10-11
 				
-				-- Check behavior for interactable (takes priority over collision)
-				local behavior = getTileBehavior(tile_id, primary_ts, secondary_ts)
-				local classified = classifyBehavior(behavior)
-				if classified == 1 then
-					push(1)  -- Interactable always shows through
-				elseif collision ~= 0 then
-					push(-1)  -- Collision flag = solid
+				-- Check tile ID for special objects (takes highest priority)
+				local id_class = classifyTileId(tile_id)
+				if id_class ~= nil then
+					push(id_class)  -- Special object
+				elseif isWarpTile(mx, my) then
+					push(1)  -- Warp/door
 				else
-					push(0)  -- Walkable
+					-- Fall back to behavior byte / collision classification
+					local behavior = getTileBehavior(tile_id, primary_ts, secondary_ts)
+					local classified = classifyBehavior(behavior)
+					if classified == 1 then
+						push(1)  -- Interactable always shows through
+					elseif collision ~= 0 then
+						push(-1)  -- Collision flag = solid
+					else
+						push(0)  -- Walkable
+					end
 				end
 			end
 		end
