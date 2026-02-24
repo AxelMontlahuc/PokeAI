@@ -118,18 +118,25 @@ int main(int argc, char** argv) {
     while (1) {
         temperature = fmax(TEMP_MIN, TEMP_MAX * pow(TEMP_DECAY, (double)episode));
 
-        trajectory** batch = malloc(WORKER_BATCH_SIZE * sizeof(trajectory*));
+        trajectory** batch = calloc(WORKER_BATCH_SIZE, sizeof(trajectory*));
         assert(batch != NULL);
+        int saved = 0;
         for (int b=0; b<WORKER_BATCH_SIZE; b++) {
             batch[b] = runTrajectory(network, WORKER_STEPS, temperature);
             if (saveCondition()) {
                 gba_savestate(SAVESTATE_PATH);
+                printf("Savestate written to %s\n", SAVESTATE_PATH);
+                saved = 1;
                 break;
             }
         }
 
-        for (int b=0; b<WORKER_BATCH_SIZE; b++) freeTrajectory(batch[b]);
+        for (int b=0; b<WORKER_BATCH_SIZE; b++) {
+            if (batch[b]) freeTrajectory(batch[b]);
+        }
         free(batch);
+
+        if (saved) break;
     }
 
     freeLSTM(network);
