@@ -24,9 +24,9 @@ const char* SAVESTATE_PATH = "saves/skipintro.sav";
 const int SPEED = 120;
 const int BUTTON_PRESS_MS = 70;
 
-int WORKER_TRAJECTORIES = 3;
+int WORKER_TRAJECTORIES = 2;
 int WORKER_STEPS = 512;
-int WORKER_BATCH_SIZE = 3;
+int WORKER_BATCH_SIZE = 2;
 
 double TEMP_MAX = 1.5;
 double TEMP_MIN = 1.0;

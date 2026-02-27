@@ -75,7 +75,18 @@ void convertState(state s, double* out) {
 
     for (int r = 0; r < 11; r++) {
         for (int c = 0; c < 11; c++) {
-            out[6*8 + 9 + r*11 + c] = (double)s.behavior[r][c];
+            int b = s.behavior[r][c];
+            // Map integer codes to neural network inputs:
+            // -1 (solid) -> -1.0, 0 (walkable) -> 0.0, 1 (grass) -> 0.5, 2 (interactable) -> 1.0
+            double val;
+            switch (b) {
+                case -1: val = -1.0; break;
+                case  0: val =  0.0; break;
+                case  1: val =  0.5; break;
+                case  2: val =  1.0; break;
+                default: val =  0.0; break;
+            }
+            out[6*8 + 9 + r*11 + c] = val;
         }
     }
 }

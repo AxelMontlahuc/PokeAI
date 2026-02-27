@@ -370,45 +370,50 @@ local function readRom8(addr)
 	return emu.memory.cart0:read8(offset)
 end
 
--- Get behavior byte for a metatile
+-- Get the behavior byte from a metatile's attributes
+-- Tileset structure (from pret/pokeemerald global.fieldmap.h):
+--   +0x00 isCompressed (bool8)
+--   +0x01 isSecondary  (bool8)
+--   +0x04 tiles ptr
+--   +0x08 palettes ptr
+--   +0x0C metatiles ptr
+--   +0x10 metatileAttributes ptr  (u16 per metatile)
+--   +0x14 callback ptr
 local function getTileBehavior(tile_id, primary_ts, secondary_ts)
 	local tileset_ptr, local_id
 	
-	if tile_id < 640 then
+	-- NUM_METATILES_IN_PRIMARY = 512 (0x200) in pokeemerald
+	if tile_id < 512 then
 		tileset_ptr = primary_ts
 		local_id = tile_id
 	else
 		tileset_ptr = secondary_ts
-		local_id = tile_id - 640
+		local_id = tile_id - 512
 	end
 	
 	if tileset_ptr == 0 or tileset_ptr < 0x08000000 then return 0 end
 	
-	-- Behavior/attributes pointer is at tileset_header + 0x10
+	-- metatileAttributes pointer at tileset + 0x10
 	local attr_ptr = readRom32(tileset_ptr + 0x10)
 	if attr_ptr == 0 or attr_ptr < 0x08000000 then return 0 end
 	
-	-- Each metatile has 4 bytes of attributes, behavior is byte 0
-	local behavior_addr = attr_ptr + local_id * 4
-	return readRom8(behavior_addr)
+	-- Each metatile attribute is u16 (2 bytes)
+	local attr_addr = attr_ptr + local_id * 2
+	local attr = readRom16(attr_addr)
+	-- Behavior = bits 0-7
+	return attr % 256
 end
 
--- Classify behavior byte: 0=normal, 1=interactable
--- Only used to detect interactable tiles; collision bits handle solid
-local function classifyBehavior(behavior)
-	-- Interactable behaviors
-	-- if behavior == 0x08 then return 1 end    -- Houses Door
-	-- if behavior == 0x28 then return 1 end    -- Lab door
-	-- if behavior == 0xAE then return 1 end	 -- General doors with a 1 offset?
-	-- if behavior == 0x41 then return 1 end	 -- Random door thing
-	return 0
+-- Check behavior byte for tall grass / long grass
+local function isGrassBehavior(behavior)
+	return behavior == 0x02 or behavior == 0x03
 end
 
 -- Special tile IDs that should override behavior classification
 -- Maps tile_id -> behavior value for objects not distinguishable by behavior byte
 -- Returns nil when no override applies
 local function classifyTileId(tile_id)
-	if tile_id == 655 then return 1 end      -- Clock
+	if tile_id == 655 then return 2 end      -- Clock -> interactable
 	return nil  -- No override
 end
 
@@ -527,9 +532,48 @@ function bulkReadBehaviorMap()
 	
 	console:log(string.format("  Adjusted pos: (%d, %d)", adj_x, adj_y))
 	
+	-- Diagnostic: show tileset pointers and behavior for player's tile
+	do
+		local pmx = adj_x
+		local pmy = adj_y
+		if pmx >= 0 and pmy >= 0 and pmx < map_width and pmy < map_height then
+			local ptile_addr = map_data + (pmy * map_width + pmx) * 2
+			local ptile_entry = readRom16(ptile_addr)
+			local ptile_id = ptile_entry % 1024
+			local pcoll = math.floor(ptile_entry / 1024) % 4
+			
+			-- Which tileset?
+			local ts_ptr, lid
+			if ptile_id < 512 then
+				ts_ptr = primary_ts
+				lid = ptile_id
+				console:log(string.format("  Player tile: id=%d (primary, local=%d), coll=%d", ptile_id, lid, pcoll))
+			else
+				ts_ptr = secondary_ts
+				lid = ptile_id - 512
+				console:log(string.format("  Player tile: id=%d (secondary, local=%d), coll=%d", ptile_id, lid, pcoll))
+			end
+			
+			console:log(string.format("  Tileset ptr: 0x%08X", ts_ptr))
+			local attr_ptr_val = readRom32(ts_ptr + 0x10)
+			console:log(string.format("  Attr ptr (+0x10): 0x%08X", attr_ptr_val))
+			local cb_ptr_val = readRom32(ts_ptr + 0x14)
+			console:log(string.format("  Callback  (+0x14): 0x%08X", cb_ptr_val))
+			
+			if attr_ptr_val ~= 0 and attr_ptr_val >= 0x08000000 then
+				local a_addr = attr_ptr_val + lid * 2
+				local raw_attr = readRom16(a_addr)
+				local bhv = raw_attr % 256
+				console:log(string.format("  Raw attr @0x%08X = 0x%04X, behavior = 0x%02X", a_addr, raw_attr, bhv))
+			else
+				console:log("  WARNING: attr_ptr looks invalid!")
+			end
+		end
+	end
+	
 	-- Debug: Print tile IDs, collision bits, and behavior bytes
 	-- Tile entry format: bits 0-9 = tile ID, bits 10-11 = collision, bits 12-15 = elevation
-	console:log("  Tile data (11x11 grid): [TileID:Coll:Behavior]")
+	console:log("  Tile data (11x11 grid): [TileID:Coll:Bhv]")
 	for dr = -5, 5 do
 		local row_str = "    "
 		for dc = -5, 5 do
@@ -567,23 +611,21 @@ function bulkReadBehaviorMap()
 				local tile_id = tile_entry % 1024  -- bits 0-9
 				local collision = math.floor(tile_entry / 1024) % 4  -- bits 10-11
 				
+				-- Get behavior byte for grass detection
+				local behavior = getTileBehavior(tile_id, primary_ts, secondary_ts)
+				
 				-- Check tile ID for special objects (takes highest priority)
 				local id_class = classifyTileId(tile_id)
 				if id_class ~= nil then
 					push(id_class)  -- Special object
 				elseif isWarpTile(mx, my) then
-					push(1)  -- Warp/door
+					push(2)  -- Warp/door = interactable
+				elseif isGrassBehavior(behavior) then
+					push(1)  -- Tall grass / long grass
+				elseif collision ~= 0 then
+					push(-1)  -- Collision flag = solid
 				else
-					-- Fall back to behavior byte / collision classification
-					local behavior = getTileBehavior(tile_id, primary_ts, secondary_ts)
-					local classified = classifyBehavior(behavior)
-					if classified == 1 then
-						push(1)  -- Interactable always shows through
-					elseif collision ~= 0 then
-						push(-1)  -- Collision flag = solid
-					else
-						push(0)  -- Walkable
-					end
+					push(0)  -- Walkable
 				end
 			end
 		end

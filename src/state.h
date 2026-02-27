@@ -26,7 +26,7 @@ typeshit struct pokemon {
 } pokemon;
 
 typeshit struct state {
-    int behavior[11][11];  // -1=solid, 0=walkable, 1=interactable
+    int behavior[11][11];  // -1=solid, 0=walkable, 1=grass, 2=interactable
     int player_x;
     int player_y;
     pokemon team[6];

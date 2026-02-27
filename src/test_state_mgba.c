@@ -24,7 +24,7 @@
 static void print_behavior_map(int behavior[11][11], int player_x, int player_y) {
     printf("\n=== BEHAVIOR MAP (11x11 centered on player) ===\n");
     printf("Player position: (%d, %d)\n", player_x, player_y);
-    printf("Legend: # = solid(-1), . = walkable(0), ! = interactable(1), @ = player\n\n");
+    printf("Legend: # = solid(-1), . = walkable(0), ~ = grass(1), ! = interactable(2), @ = player\n\n");
     
     for (int r = 0; r < 11; r++) {
         printf("  ");
@@ -35,7 +35,8 @@ static void print_behavior_map(int behavior[11][11], int player_x, int player_y)
                 switch (behavior[r][c]) {
                     case -1: printf("# "); break;  // Solid
                     case  0: printf(". "); break;  // Walkable
-                    case  1: printf("! "); break;  // Interactable
+                    case  1: printf("~ "); break;  // Grass
+                    case  2: printf("! "); break;  // Interactable
                     default: printf("? "); break;  // Unknown
                 }
             }

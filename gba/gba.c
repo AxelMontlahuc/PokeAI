@@ -352,48 +352,44 @@ static inline uint32_t read32(uint32_t addr) {
 }
 
 // Returns: behavior byte (0x00=walkable, 0x01=solid/wall, 0x02-0x69=various interactables)
+// Get the full u32 metatile attribute for a tile
+// Get behavior byte from metatile attribute
+// Tileset structure (from pret/pokeemerald):
+//   +0x00 isCompressed, +0x01 isSecondary
+//   +0x04 tiles, +0x08 palettes, +0x0C metatiles
+//   +0x10 metatileAttributes (u16 per metatile)
+//   +0x14 callback
 static uint8_t get_tile_behavior(uint16_t tile_id, uint32_t primary_tileset, uint32_t secondary_tileset) {
 	uint32_t tileset_ptr;
 	uint16_t local_id;
 	
-	if (tile_id < 640) {
+	// NUM_METATILES_IN_PRIMARY = 512 (0x200) in pokeemerald
+	if (tile_id < 512) {
 		tileset_ptr = primary_tileset;
 		local_id = tile_id;
 	} else {
 		tileset_ptr = secondary_tileset;
-		local_id = tile_id - 640;
+		local_id = tile_id - 512;
 	}
 	
 	if (tileset_ptr == 0) return 0;
 	
-	// Behavior/attributes pointer is at tileset + 0x10
+	// metatileAttributes pointer at tileset + 0x10
 	uint32_t attr_ptr = read32(tileset_ptr + 0x10);
 	if (attr_ptr == 0 || attr_ptr < 0x08000000) return 0;
 	
-	// Each metatile has 4 bytes of attributes, behavior is first byte
-	uint32_t behavior_addr = attr_ptr + (uint32_t)local_id * 4;
-	return read8(behavior_addr);
+	// Each metatile attribute is u16 (2 bytes)
+	uint32_t attr_addr = attr_ptr + (uint32_t)local_id * 2;
+	uint16_t attr = read16(attr_addr);
+	// Behavior = bits 0-7
+	return attr & 0xFF;
 }
 
 // Special tile IDs that should override behavior classification
-// Maps tile_id -> behavior value for objects not distinguishable by behavior byte
-// Returns -99 when no override applies
 static int classify_tile_id(uint16_t tile_id) {
 	switch (tile_id) {
-		case 655:	 return 1;   // Clock
+		case 655:	 return 2;   // Clock -> interactable
 		default:     return -99; // No override
-	}
-}
-
-// Classify behavior byte: 0=normal, 1=interactable
-// Only used to detect interactable tiles; collision bits handle solid
-static int classify_behavior(uint8_t behavior) {
-	switch (behavior) {
-		case 0x08: return 1;   // Houses Door
-		case 0x28: return 1;   // Lab door
-		case 0xAE: return 1;   // General doors with a 1 offset
-		case 0x41: return 1;   // Random door thing
-		default:   return 0;
 	}
 }
 
@@ -496,23 +492,21 @@ void gba_behavior_map(int behavior_out[11][11], int* player_x, int* player_y) {
 			uint16_t tile_id = tile_entry & 0x03FF;  // bits 0-9
 			uint8_t collision = (tile_entry >> 10) & 0x03;  // bits 10-11
 			
+			// Get behavior byte for grass detection
+			uint8_t behavior = get_tile_behavior(tile_id, primary_tileset, secondary_tileset);
+			
 			// Check tile ID for special objects (takes highest priority)
 			int id_class = classify_tile_id(tile_id);
 			if (id_class != -99) {
-				behavior_out[row][col] = id_class;  // Special object
+				behavior_out[row][col] = 2;  // Special object = interactable
 			} else if (is_warp_tile(mx, my)) {
-				behavior_out[row][col] = 1;  // Warp/door
+				behavior_out[row][col] = 2;  // Warp/door = interactable
+			} else if (behavior == 0x02 || behavior == 0x03) {
+				behavior_out[row][col] = 1;  // Tall grass (0x02) / long grass (0x03)
+			} else if (collision != 0) {
+				behavior_out[row][col] = -1;  // Collision flag = solid
 			} else {
-				// Fall back to behavior byte / collision classification
-				uint8_t behavior = get_tile_behavior(tile_id, primary_tileset, secondary_tileset);
-				int classified = classify_behavior(behavior);
-				if (classified == 1) {
-					behavior_out[row][col] = 1;  // Interactable always shows through
-				} else if (collision != 0) {
-					behavior_out[row][col] = -1;  // Collision flag = solid
-				} else {
-					behavior_out[row][col] = 0;  // Walkable
-				}
+				behavior_out[row][col] = 0;  // Walkable
 			}
 		}
 	}
