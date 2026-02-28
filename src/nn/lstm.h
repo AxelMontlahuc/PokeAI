@@ -45,7 +45,7 @@ struct Lstm {
     double* bo_v;
 };
 
-Lstm* init_lstm(int input_size, int hidden_size, int output_size);
+Lstm* init_lstm(int input_size, int hidden_size);
 void free_lstm(Lstm* lstm);
 
 #endif

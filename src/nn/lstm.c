@@ -100,6 +100,7 @@ void xavier_init(double** matrix, int input_size, int hidden_size) {
     }
 }
 
+// Fonction auxiliaire pour l'initialisation des poids
 void init_weights(double** matrix, int input_size, int hidden_size) {
     double** wx = malloc(hidden_size * sizeof(double*));
     double** wh = malloc(hidden_size * sizeof(double*));
@@ -116,8 +117,8 @@ void init_weights(double** matrix, int input_size, int hidden_size) {
         }
     }
 
-    xavier_init(wx, hidden_size, hidden_size);
-    orthogonal_init(wh, hidden_size, input_size);
+    xavier_init(wx, input_size, hidden_size);
+    orthogonal_init(wh, hidden_size, hidden_size);
 
     for (int i = 0; i < hidden_size; i++) {
         for (int j = 0; j < input_size; j++) {
@@ -135,12 +136,12 @@ void init_weights(double** matrix, int input_size, int hidden_size) {
     free(wh);
 }
 
-Lstm* init_lstm(int input_size, int hidden_size, int output_size) {
+// Initialisation du lstm
+Lstm* init_lstm(int input_size, int hidden_size) {
     Lstm* lstm = malloc(sizeof(Lstm));
 
     lstm->input_size = input_size;
     lstm->hidden_size = hidden_size;
-    lstm->output_size = output_size;
 
     lstm->hidden_state = calloc(hidden_size, sizeof(double));
     lstm->cell_state = calloc(hidden_size, sizeof(double));
@@ -202,6 +203,7 @@ Lstm* init_lstm(int input_size, int hidden_size, int output_size) {
     return lstm;
 }
 
+// Libération de la mémoire du lstm
 void free_lstm(Lstm* lstm) {
     free(lstm->hidden_state);
     free(lstm->cell_state);
@@ -254,4 +256,72 @@ void free_lstm(Lstm* lstm) {
     free(lstm->bo_v);
 
     free(lstm);
+}
+
+// Fonction sigmoïde
+double sigmoid(double x) {
+    return 1.0 / (1.0 + exp(-x));
+}
+
+double* matrix_vector_product(double** matrix, double* vector, int rows, int cols) {
+    double* result = malloc(rows * sizeof(double));
+    for (int i=0; i<rows; i++) {
+        result[i] = 0.0;
+        for (int j=0; j<cols; j++) {
+            result[i] += matrix[i][j] * vector[j];
+        }
+    }
+    return result;
+}
+
+// Propagation
+void forward_prop(Lstm* lstm, double* input) {
+    // Concaténation de l'entrée et de l'état caché dans un array z
+    int z_size = lstm->input_size + lstm->hidden_size;
+    double* z = malloc(z_size * sizeof(double));
+    for (int i=0; i<lstm->input_size; i++) {
+        z[i] = input[i];
+    }
+    for (int i=0; i<lstm->hidden_size; i++) {
+        z[lstm->input_size + i] = lstm->hidden_state[i];
+    }
+
+    // Calcul des portes
+    double* f = malloc(lstm->hidden_size * sizeof(double));
+    double* i = malloc(lstm->hidden_size * sizeof(double));
+    double* g = malloc(lstm->hidden_size * sizeof(double)); // On note g la porte candidat pour éviter la confusion avec la mémoire à long-terme (cellule) c
+    double* o = malloc(lstm->hidden_size * sizeof(double));
+
+    double* wfz = matrix_vector_product(lstm->wf, z, lstm->hidden_size, z_size);
+    double* wiz = matrix_vector_product(lstm->wi, z, lstm->hidden_size, z_size);
+    double* wcz = matrix_vector_product(lstm->wc, z, lstm->hidden_size, z_size);
+    double* woz = matrix_vector_product(lstm->wo, z, lstm->hidden_size, z_size);
+
+    for (int j=0; j<lstm->hidden_size; j++) {
+        f[j] = sigmoid(wfz[j] + lstm->bf[j]);
+        i[j] = sigmoid(wiz[j] + lstm->bi[j]);
+        g[j] = tanh(wcz[j] + lstm->bc[j]);
+        o[j] = sigmoid(woz[j] + lstm->bo[j]);
+    }
+
+    free(wfz);
+    free(wiz);
+    free(wcz);
+    free(woz);
+
+    // Mise à jour de la mémoire long-terme (cellule)
+    for (int j=0; j<lstm->hidden_size; j++) {
+        lstm->cell_state[j] = f[j] * lstm->cell_state[j] + i[j] * g[j];
+    }
+
+    // Mise à jour de la mémoire court-terme (état caché)
+    for (int j=0; j<lstm->hidden_size; j++) {
+        lstm->hidden_state[j] = o[j] * tanh(lstm->cell_state[j]);
+    }
+
+    free(f);
+    free(i);
+    free(g);
+    free(o);
+    free(z);
 }
