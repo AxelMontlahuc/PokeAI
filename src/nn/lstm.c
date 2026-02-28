@@ -126,7 +126,7 @@ void init_weights(double** matrix, int input_size, int hidden_size) {
         for (int j = 0; j < hidden_size; j++) {
             matrix[i][input_size + j] = wh[i][j];
         }
-        
+
         free(wx[i]);
         free(wh[i]);
     }
@@ -200,4 +200,58 @@ Lstm* init_lstm(int input_size, int hidden_size, int output_size) {
     lstm->bo_v = calloc(hidden_size, sizeof(double));
     
     return lstm;
+}
+
+void free_lstm(Lstm* lstm) {
+    free(lstm->hidden_state);
+    free(lstm->cell_state);
+
+    for (int i=0; i<lstm->hidden_size; i++) {
+        free(lstm->wf[i]);
+        free(lstm->wi[i]);
+        free(lstm->wc[i]);
+        free(lstm->wo[i]);
+
+        free(lstm->wf_m[i]);
+        free(lstm->wi_m[i]);
+        free(lstm->wc_m[i]);
+        free(lstm->wo_m[i]);
+
+        free(lstm->wf_v[i]);
+        free(lstm->wi_v[i]);
+        free(lstm->wc_v[i]);
+        free(lstm->wo_v[i]);
+    }
+
+    free(lstm->wf);
+    free(lstm->wi);
+    free(lstm->wc);
+    free(lstm->wo);
+
+    free(lstm->wf_m);
+    free(lstm->wi_m);
+    free(lstm->wc_m);
+    free(lstm->wo_m);
+
+    free(lstm->wf_v);
+    free(lstm->wi_v);
+    free(lstm->wc_v);
+    free(lstm->wo_v);
+
+    free(lstm->bf);
+    free(lstm->bi);
+    free(lstm->bc);
+    free(lstm->bo);
+
+    free(lstm->bf_m);
+    free(lstm->bi_m);
+    free(lstm->bc_m);
+    free(lstm->bo_m);
+
+    free(lstm->bf_v);
+    free(lstm->bi_v);
+    free(lstm->bc_v);
+    free(lstm->bo_v);
+
+    free(lstm);
 }
