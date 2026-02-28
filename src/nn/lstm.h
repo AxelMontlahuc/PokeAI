@@ -23,10 +23,10 @@ struct Lstm {
     double** wo_m;
 
     // Second moment pour Adam (variance/moyenne des carrés des gradients)
-    double* wf_v;
-    double* wi_v;
-    double* wc_v;
-    double* wo_v;
+    double** wf_v;
+    double** wi_v;
+    double** wc_v;
+    double** wo_v;
 
     // Biais
     double* bf;
