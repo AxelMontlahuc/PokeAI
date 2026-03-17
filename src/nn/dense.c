@@ -61,15 +61,43 @@ void free_dense(Dense* dense) {
     free(dense);
 }
 
+// Propagation
 double* dense_forward(Dense* dense, double* input) {
-    double* output = malloc(dense->output_size * sizeof(double));
+    double* logits = malloc(dense->output_size * sizeof(double));
 
+    // Multiplication matricielle : output = w * input + b
     for (int i=0; i<dense->output_size; i++) {
-        output[i] = dense->b[i];
+        logits[i] = dense->b[i];
         for (int j=0; j<dense->input_size; j++) {
-            output[i] += dense->w[i][j] * input[j];
+            logits[i] += dense->w[i][j] * input[j];
         }
     }
 
-    return output;
+    return logits;
+}
+
+// Rétropropagation
+double* dense_backward(Dense* dense, double* input, double* dL_dlogits, double** dL_dw, double* dL_db) {
+    // Gradients pour les poids
+    for (int i=0; i<dense->output_size; i++) {
+        for (int j=0; j<dense->input_size; j++) {
+            double grad = dL_dlogits[i] * input[j];
+            dL_dw[i][j] += grad; // Accumulation du gradient (pour Adam)
+        }
+    }
+
+    // Gradients pour les biais
+    for (int i=0; i<dense->output_size; i++) {
+        dL_db[i] += dL_dlogits[i]; // Accumulation du gradient (pour Adam)
+    }
+
+    // Gradients pour l'entrée (nécessaire pour la rétropropagation dans les couches précédentes)
+    double* dL_dinput = calloc(dense->input_size, sizeof(double));
+    for (int j=0; j<dense->input_size; j++) {
+        for (int i=0; i<dense->output_size; i++) {
+            dL_dinput[j] += dL_dlogits[i] * dense->w[i][j];
+        }
+    }
+
+    return dL_dinput;
 }
