@@ -6,7 +6,6 @@ typedef struct Lstm Lstm;
 struct Lstm {
     int input_size;
     int hidden_size;
-    int output_size;
 
     double* hidden_state;   // mémoire à court terme
     double* cell_state;     // mémoire à long terme
@@ -47,5 +46,6 @@ struct Lstm {
 
 Lstm* init_lstm(int input_size, int hidden_size);
 void free_lstm(Lstm* lstm);
+void lstm_forward(Lstm* lstm, double* input);
 
 #endif

@@ -275,7 +275,7 @@ double* matrix_vector_product(double** matrix, double* vector, int rows, int col
 }
 
 // Propagation
-void forward_prop(Lstm* lstm, double* input) {
+void lstm_forward(Lstm* lstm, double* input) {
     // Concaténation de l'entrée et de l'état caché dans un array z
     int z_size = lstm->input_size + lstm->hidden_size;
     double* z = malloc(z_size * sizeof(double));

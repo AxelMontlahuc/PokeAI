@@ -60,3 +60,16 @@ void free_dense(Dense* dense) {
 
     free(dense);
 }
+
+double* dense_forward(Dense* dense, double* input) {
+    double* output = malloc(dense->output_size * sizeof(double));
+
+    for (int i=0; i<dense->output_size; i++) {
+        output[i] = dense->b[i];
+        for (int j=0; j<dense->input_size; j++) {
+            output[i] += dense->w[i][j] * input[j];
+        }
+    }
+
+    return output;
+}

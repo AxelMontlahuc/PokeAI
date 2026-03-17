@@ -16,4 +16,8 @@ struct Dense {
     double* b_v;
 };
 
+Dense* init_dense(int input_size, int output_size);
+void free_dense(Dense* dense);
+double* dense_forward(Dense* dense, double* input);
+
 #endif
