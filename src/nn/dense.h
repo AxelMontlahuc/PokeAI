@@ -19,6 +19,6 @@ struct Dense {
 Dense* init_dense(int input_size, int output_size);
 void free_dense(Dense* dense);
 double* dense_forward(Dense* dense, double* input);
-void dense_backward(Dense* dense, double* input, double* dL_dlogits, double** dL_dw, double* dL_db);
+double** dense_backward(Dense* dense, double** input, int batch_size, double** dL_dlogits, double** dL_dw, double* dL_db);
 
 #endif

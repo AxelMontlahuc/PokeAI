@@ -23,7 +23,7 @@ Dense* init_dense(int input_size, int output_size) {
     dense->input_size = input_size;
     dense->output_size = output_size;
 
-    dense->w = malloc(output_size * sizeof(double*));
+    dense->w = malloc(output_size * sizeof(double*));   
     dense->w_m = malloc(output_size * sizeof(double*));
     dense->w_v = malloc(output_size * sizeof(double*));
 
@@ -77,25 +77,38 @@ double* dense_forward(Dense* dense, double* input) {
 }
 
 // Rétropropagation
-double* dense_backward(Dense* dense, double* input, double* dL_dlogits, double** dL_dw, double* dL_db) {
+double** dense_backward(Dense* dense, double** input, int batch_size, double** dL_dlogits, double** dL_dw, double* dL_db) {
     // Gradients pour les poids
     for (int i=0; i<dense->output_size; i++) {
         for (int j=0; j<dense->input_size; j++) {
-            double grad = dL_dlogits[i] * input[j];
-            dL_dw[i][j] += grad; // Accumulation du gradient (pour Adam)
+            // Calcul du gradient moyen sur le batch
+            double grad = 0;
+            for (int k=0; k<batch_size; k++) {
+                grad += dL_dlogits[k][i] * input[k][j];
+            }
+            grad /= batch_size; // Moyenne sur le batch
+
+            dL_dw[i][j] = grad;
         }
     }
 
     // Gradients pour les biais
     for (int i=0; i<dense->output_size; i++) {
-        dL_db[i] += dL_dlogits[i]; // Accumulation du gradient (pour Adam)
+        double grad = 0;
+        for (int k=0; k<batch_size; k++) {
+            grad += dL_dlogits[k][i];
+        }
+        dL_db[i] = grad / batch_size;
     }
 
     // Gradients pour l'entrée (nécessaire pour la rétropropagation dans les couches précédentes)
-    double* dL_dinput = calloc(dense->input_size, sizeof(double));
-    for (int j=0; j<dense->input_size; j++) {
-        for (int i=0; i<dense->output_size; i++) {
-            dL_dinput[j] += dL_dlogits[i] * dense->w[i][j];
+    double** dL_dinput = malloc(batch_size * sizeof(double*));
+    for (int k=0; k<batch_size; k++) {
+        dL_dinput[k] = calloc(dense->input_size, sizeof(double));
+        for (int j=0; j<dense->input_size; j++) {
+            for (int i=0; i<dense->output_size; i++) {
+                dL_dinput[k][j] += dL_dlogits[k][i] * dense->w[i][j];
+            }
         }
     }
 
