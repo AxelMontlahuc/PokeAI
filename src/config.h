@@ -6,4 +6,11 @@
 #define POLICY_OUTPUT_SIZE 6
 #define VALUE_OUTPUT_SIZE 1
 
+#define MAX_INPUT_SIZE 10
+#define MAX_HIDDEN_SIZE 64
+#define MAX_OUTPUT_SIZE 6
+#define MAX_COL_SIZE 74  // INPUT_SIZE + HIDDEN_SIZE
+
+#define BATCH_SIZE_MAX 32
+
 #endif

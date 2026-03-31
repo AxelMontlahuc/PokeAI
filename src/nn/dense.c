@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include "dense.h"
+#include "config.h"
 
 // Initialisation de Xavier : distribution uniforme dans [-limit, limit] avec limit = sqrt(6 / (input_size + output_size))
 void xavier_init(double** matrix, int input_size, int output_size) {
@@ -17,54 +18,28 @@ void xavier_init(double** matrix, int input_size, int output_size) {
 }
 
 // Initialisation d'une couche dense
-Dense* init_dense(int input_size, int output_size) {
-    Dense* dense = malloc(sizeof(Dense));
-
+void init_dense(Dense* dense, int input_size, int output_size) {
     dense->input_size = input_size;
     dense->output_size = output_size;
 
-    dense->w = malloc(output_size * sizeof(double*));   
-    dense->w_m = malloc(output_size * sizeof(double*));
-    dense->w_v = malloc(output_size * sizeof(double*));
-
-    for (int i=0; i<output_size; i++) {
-        dense->w[i] = malloc(input_size * sizeof(double));
-        dense->w_m[i] = calloc(input_size, sizeof(double));
-        dense->w_v[i] = calloc(input_size, sizeof(double));
+    for (int i = 0; i < output_size; i++) {
+        for (int j = 0; j < input_size; j++) {
+            dense->w_m[i][j] = 0.0;
+            dense->w_v[i][j] = 0.0;
+        }
     }
 
-    xavier_init(dense->w, input_size, output_size);
+    xavier_init((double**)dense->w, input_size, output_size);
 
-    dense->b = calloc(output_size, sizeof(double));
-    dense->b_m = calloc(output_size, sizeof(double));
-    dense->b_v = calloc(output_size, sizeof(double));
-
-    return dense;
-}
-
-// Libération de la mémoire d'une couche dense
-void free_dense(Dense* dense) {
-    for (int i=0; i<dense->output_size; i++) {
-        free(dense->w[i]);
-        free(dense->w_m[i]);
-        free(dense->w_v[i]);
+    for (int i = 0; i < output_size; i++) {
+        dense->b[i] = 0.0;
+        dense->b_m[i] = 0.0;
+        dense->b_v[i] = 0.0;
     }
-
-    free(dense->w);
-    free(dense->w_m);
-    free(dense->w_v);
-
-    free(dense->b);
-    free(dense->b_m);
-    free(dense->b_v);
-
-    free(dense);
 }
 
 // Propagation
-double* dense_forward(Dense* dense, double* input) {
-    double* logits = malloc(dense->output_size * sizeof(double));
-
+void dense_forward(Dense* dense, double* input, double* logits) {
     // Multiplication matricielle : output = w * input + b
     for (int i=0; i<dense->output_size; i++) {
         logits[i] = dense->b[i];
@@ -72,12 +47,10 @@ double* dense_forward(Dense* dense, double* input) {
             logits[i] += dense->w[i][j] * input[j];
         }
     }
-
-    return logits;
 }
 
 // Rétropropagation
-double** dense_backward(Dense* dense, double** input, int batch_size, double** dL_dlogits, double** dL_dw, double* dL_db) {
+void dense_backward(Dense* dense, double** input, int batch_size, double** dL_dlogits, double** dL_dw, double* dL_db, double** dL_dinput) {
     // Gradients pour les poids
     for (int i=0; i<dense->output_size; i++) {
         for (int j=0; j<dense->input_size; j++) {
@@ -102,15 +75,14 @@ double** dense_backward(Dense* dense, double** input, int batch_size, double** d
     }
 
     // Gradients pour l'entrée (nécessaire pour la rétropropagation dans les couches précédentes)
-    double** dL_dinput = malloc(batch_size * sizeof(double*));
     for (int k=0; k<batch_size; k++) {
-        dL_dinput[k] = calloc(dense->input_size, sizeof(double));
+        for (int j=0; j<dense->input_size; j++) {
+            dL_dinput[k][j] = 0.0;
+        }
         for (int j=0; j<dense->input_size; j++) {
             for (int i=0; i<dense->output_size; i++) {
                 dL_dinput[k][j] += dL_dlogits[k][i] * dense->w[i][j];
             }
         }
     }
-
-    return dL_dinput;
 }

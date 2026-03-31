@@ -1,24 +1,25 @@
 #ifndef DENSE_H
 #define DENSE_H
 
+#include "config.h"
+
 typedef struct Dense Dense;
 
 struct Dense {
     int input_size;
     int output_size;
 
-    double** w;
-    double** w_m;
-    double** w_v;
+    double w[MAX_OUTPUT_SIZE][MAX_INPUT_SIZE];
+    double w_m[MAX_OUTPUT_SIZE][MAX_INPUT_SIZE];
+    double w_v[MAX_OUTPUT_SIZE][MAX_INPUT_SIZE];
 
-    double* b;
-    double* b_m;
-    double* b_v;
+    double b[MAX_OUTPUT_SIZE];
+    double b_m[MAX_OUTPUT_SIZE];
+    double b_v[MAX_OUTPUT_SIZE];
 };
 
-Dense* init_dense(int input_size, int output_size);
-void free_dense(Dense* dense);
-double* dense_forward(Dense* dense, double* input);
-double** dense_backward(Dense* dense, double** input, int batch_size, double** dL_dlogits, double** dL_dw, double* dL_db);
+void init_dense(Dense* dense, int input_size, int output_size);
+void dense_forward(Dense* dense, double* input, double* logits);
+void dense_backward(Dense* dense, double** input, int batch_size, double** dL_dlogits, double** dL_dw, double* dL_db, double** dL_dinput);
 
 #endif
