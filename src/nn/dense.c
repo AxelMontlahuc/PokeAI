@@ -50,7 +50,8 @@ void dense_forward(Dense* dense, double* input, double* logits) {
 }
 
 // Rétropropagation
-void dense_backward(Dense* dense, double** input, int batch_size, double** dL_dlogits, double** dL_dw, double* dL_db, double** dL_dinput) {
+void dense_backward(Dense* dense,
+    double input[BATCH_SIZE][INPUT_SIZE], int batch_size, double dL_dlogits[BATCH_SIZE][MAX_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][INPUT_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][INPUT_SIZE]) {
     // Gradients pour les poids
     for (int i=0; i<dense->output_size; i++) {
         for (int j=0; j<dense->input_size; j++) {

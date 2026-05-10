@@ -46,3 +46,9 @@ double* agent_forward(Agent* agent, double* input, double** value_output, double
     softmax(agent->policy_logits, agent->policy_head.output_size, agent->policy_output);
     return agent->policy_output;
 }
+
+// Rétropropagation pour tout l'agent
+void agent_backward(Agent* agent) {
+    // Rétropropagation de la value head/critic
+    // value_backward(&agent->value_head, ...);
+}

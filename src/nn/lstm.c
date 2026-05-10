@@ -39,9 +39,9 @@ void column(double** matrix, int j, int rows, double* col) {
 
 // Initialisation orthogonale : on prend la décomposition QR d'une matrice aléatoire et on utilise Q
 void orthogonal_init(double** matrix, int rows, int cols) {
-    double projection[MAX_HIDDEN_SIZE];
-    double column_j_buf[MAX_HIDDEN_SIZE];
-    double column_k_buf[MAX_HIDDEN_SIZE];
+    double projection[HIDDEN_SIZE];
+    double column_j_buf[HIDDEN_SIZE];
+    double column_k_buf[HIDDEN_SIZE];
     
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
@@ -97,8 +97,8 @@ void xavier_init(double** matrix, int input_size, int hidden_size) {
 
 // Fonction auxiliaire pour l'initialisation des poids
 void init_weights(double** matrix, int input_size, int hidden_size) {
-    double wx[MAX_HIDDEN_SIZE][MAX_INPUT_SIZE];
-    double wh[MAX_HIDDEN_SIZE][MAX_HIDDEN_SIZE];
+    double wx[HIDDEN_SIZE][INPUT_SIZE];
+    double wh[HIDDEN_SIZE][HIDDEN_SIZE];
 
     for (int i=0; i<hidden_size; i++) {
         for (int j=0; j<input_size; j++) {
@@ -192,7 +192,7 @@ double matrix_vector_product(double** matrix, double* vector, int rows, int cols
 void lstm_forward(Lstm* lstm, double* input) {
     // Concaténation de l'entrée et de l'état caché dans un array z
     int z_size = lstm->input_size + lstm->hidden_size;
-    double z[MAX_COL_SIZE];
+    double z[COL_SIZE];
     
     for (int i=0; i<lstm->input_size; i++) {
         z[i] = input[i];
@@ -202,15 +202,15 @@ void lstm_forward(Lstm* lstm, double* input) {
     }
 
     // Calcul des portes
-    double f[MAX_HIDDEN_SIZE];
-    double i_gate[MAX_HIDDEN_SIZE];
-    double g[MAX_HIDDEN_SIZE]; // On note g la porte candidat pour éviter la confusion avec la mémoire à long-terme (cellule) c
-    double o[MAX_HIDDEN_SIZE];
+    double f[HIDDEN_SIZE];
+    double i_gate[HIDDEN_SIZE];
+    double g[HIDDEN_SIZE]; // On note g la porte candidat pour éviter la confusion avec la mémoire à long-terme (cellule) c
+    double o[HIDDEN_SIZE];
 
-    double wfz[MAX_HIDDEN_SIZE];
-    double wiz[MAX_HIDDEN_SIZE];
-    double wcz[MAX_HIDDEN_SIZE];
-    double woz[MAX_HIDDEN_SIZE];
+    double wfz[HIDDEN_SIZE];
+    double wiz[HIDDEN_SIZE];
+    double wcz[HIDDEN_SIZE];
+    double woz[HIDDEN_SIZE];
     
     matrix_vector_product((double**)lstm->wf, z, lstm->hidden_size, z_size, wfz);
     matrix_vector_product((double**)lstm->wi, z, lstm->hidden_size, z_size, wiz);

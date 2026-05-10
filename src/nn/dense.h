@@ -9,9 +9,9 @@ struct Dense {
     int input_size;
     int output_size;
 
-    double w[MAX_OUTPUT_SIZE][MAX_INPUT_SIZE];
-    double w_m[MAX_OUTPUT_SIZE][MAX_INPUT_SIZE];
-    double w_v[MAX_OUTPUT_SIZE][MAX_INPUT_SIZE];
+    double w[MAX_OUTPUT_SIZE][INPUT_SIZE];
+    double w_m[MAX_OUTPUT_SIZE][INPUT_SIZE];
+    double w_v[MAX_OUTPUT_SIZE][INPUT_SIZE];
 
     double b[MAX_OUTPUT_SIZE];
     double b_m[MAX_OUTPUT_SIZE];
@@ -20,6 +20,13 @@ struct Dense {
 
 void init_dense(Dense* dense, int input_size, int output_size);
 void dense_forward(Dense* dense, double* input, double* logits);
-void dense_backward(Dense* dense, double** input, int batch_size, double** dL_dlogits, double** dL_dw, double* dL_db, double** dL_dinput);
+void dense_backward(Dense* dense,
+    double input[BATCH_SIZE][INPUT_SIZE],
+    int batch_size,
+    double dL_dlogits[BATCH_SIZE][MAX_OUTPUT_SIZE],
+    double dL_dw[MAX_OUTPUT_SIZE][INPUT_SIZE],
+    double dL_db[MAX_OUTPUT_SIZE],
+    double dL_dinput[BATCH_SIZE][INPUT_SIZE]
+);
 
 #endif
