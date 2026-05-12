@@ -10,4 +10,8 @@
 
 #define BATCH_SIZE 128
 
+#define GAMMA 0.99
+#define LAMBDA 0.95 // pour GAE
+#define EPSILON 0.2
+
 #endif

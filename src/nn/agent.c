@@ -51,4 +51,7 @@ double* agent_forward(Agent* agent, double* input, double** value_output, double
 void agent_backward(Agent* agent) {
     // Rétropropagation de la value head/critic
     // value_backward(&agent->value_head, ...);
+
+    // Rétropropagation de la policy head/actor
+    // policy_backward(&agent->policy_head, ...);
 }
