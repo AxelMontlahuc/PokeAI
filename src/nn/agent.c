@@ -51,7 +51,7 @@ int action_choice(double probs[POLICY_OUTPUT_SIZE]) {
 
 // Propagation pour tout l'agent
 void agent_forward_t(Agent* agent, double state[INPUT_SIZE], Trajectory* traj, int t) {
-    lstm_forward(&agent->lstm, state);
+    lstm_forward(&agent->lstm, traj, state, t);
 
     dense_forward(&agent->policy_head, agent->lstm.hidden_state, agent->policy_logits);
     dense_forward(&agent->value_head, agent->lstm.hidden_state, agent->value_logits);
@@ -74,7 +74,6 @@ void agent_forward_t(Agent* agent, double state[INPUT_SIZE], Trajectory* traj, i
     }
 
     memcpy(traj->states[t], state, sizeof(double) * INPUT_SIZE);
-    memcpy(traj->hidden_states[t], agent->lstm.hidden_state, sizeof(double) * HIDDEN_SIZE);
 }
 
 void agent_forward(Agent* agent, Trajectory* traj) {

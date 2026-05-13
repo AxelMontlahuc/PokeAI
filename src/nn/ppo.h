@@ -6,6 +6,12 @@
 struct Trajectory {
     double states[BATCH_SIZE][INPUT_SIZE];
     double hidden_states[BATCH_SIZE][HIDDEN_SIZE];
+    double z[BATCH_SIZE][COL_SIZE];    // Concaténation de l'entrée et de l'état caché précédent pour le LSTM (i.e. [x_t; h_{t-1}])
+    double f[BATCH_SIZE][HIDDEN_SIZE];
+    double i[BATCH_SIZE][HIDDEN_SIZE];
+    double g[BATCH_SIZE][HIDDEN_SIZE]; // On note g la porte candidat pour éviter la confusion avec la mémoire à long-terme (cellule) c
+    double o[BATCH_SIZE][HIDDEN_SIZE];
+    double c[BATCH_SIZE][HIDDEN_SIZE]; // Mémoire à long terme (cellule) du LSTM
     int actions[BATCH_SIZE];
     double rewards[BATCH_SIZE];
     double probs[BATCH_SIZE][POLICY_OUTPUT_SIZE];
