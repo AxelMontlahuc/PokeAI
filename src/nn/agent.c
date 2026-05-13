@@ -4,6 +4,7 @@
 
 #include "agent.h"
 #include "ppo.h"
+#include "lstm.h"
 #include "adam.h"
 #include "config.h"
 #include "../game/reward.h"
@@ -117,11 +118,34 @@ void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj) {
     // Mise à jour des poids avec Adam
     optim->t += 1;
 
-    optimizer_step_matrix(optim, agent->value_head.w, agent->value_head.w_m, agent->value_head.w_v, dL_dw_v, agent->value_head.output_size, agent->value_head.input_size);
-    optimizer_step_vector(optim, agent->value_head.b, agent->value_head.b_m, agent->value_head.b_v, dL_db_v, agent->value_head.output_size);
+    optimizer_step_matrix_1(optim, agent->value_head.w, agent->value_head.w_m, agent->value_head.w_v, dL_dw_v, agent->value_head.output_size, agent->value_head.input_size);
+    optimizer_step_vector_1(optim, agent->value_head.b, agent->value_head.b_m, agent->value_head.b_v, dL_db_v, agent->value_head.output_size);
 
-    optimizer_step_matrix(optim, agent->policy_head.w, agent->policy_head.w_m, agent->policy_head.w_v, dL_dw_p, agent->policy_head.output_size, agent->policy_head.input_size);
-    optimizer_step_vector(optim, agent->policy_head.b, agent->policy_head.b_m, agent->policy_head.b_v, dL_db_p, agent->policy_head.output_size);
+    optimizer_step_matrix_1(optim, agent->policy_head.w, agent->policy_head.w_m, agent->policy_head.w_v, dL_dw_p, agent->policy_head.output_size, agent->policy_head.input_size);
+    optimizer_step_vector_1(optim, agent->policy_head.b, agent->policy_head.b_m, agent->policy_head.b_v, dL_db_p, agent->policy_head.output_size);
+
+    // Rétropropagation à travers le LSTM
+    double dL_dwf[HIDDEN_SIZE][COL_SIZE] = {0};
+    double dL_dwi[HIDDEN_SIZE][COL_SIZE] = {0};
+    double dL_dwc[HIDDEN_SIZE][COL_SIZE] = {0};
+    double dL_dwo[HIDDEN_SIZE][COL_SIZE] = {0};
+    double dL_dbf[HIDDEN_SIZE] = {0};
+    double dL_dbi[HIDDEN_SIZE] = {0};
+    double dL_dbc[HIDDEN_SIZE] = {0};
+    double dL_dbo[HIDDEN_SIZE] = {0};
+
+    double c_ini[HIDDEN_SIZE] = {0}; // On suppose que la mémoire à long terme est initialisée à zéro au début de chaque trajectoire pour l'instant, mais il faudra à terme le stocker et le faire passer d'une trajectoire à l'autre
+    lstm_backward(&agent->lstm, traj, dL_dinput_v, dL_dinput_p, c_ini, dL_dwf, dL_dwi, dL_dwc, dL_dwo, dL_dbf, dL_dbi, dL_dbc, dL_dbo);
+
+    // Mise à jour des poids du LSTM avec Adam
+    optimizer_step_matrix_2(optim, agent->lstm.wf, agent->lstm.wf_m, agent->lstm.wf_v, dL_dwf, HIDDEN_SIZE, COL_SIZE);
+    optimizer_step_matrix_2(optim, agent->lstm.wi, agent->lstm.wi_m, agent->lstm.wi_v, dL_dwi, HIDDEN_SIZE, COL_SIZE);
+    optimizer_step_matrix_2(optim, agent->lstm.wc, agent->lstm.wc_m, agent->lstm.wc_v, dL_dwc, HIDDEN_SIZE, COL_SIZE);
+    optimizer_step_matrix_2(optim, agent->lstm.wo, agent->lstm.wo_m, agent->lstm.wo_v, dL_dwo, HIDDEN_SIZE, COL_SIZE);
+    optimizer_step_vector_2(optim, agent->lstm.bf, agent->lstm.bf_m, agent->lstm.bf_v, dL_dbf, HIDDEN_SIZE);
+    optimizer_step_vector_2(optim, agent->lstm.bi, agent->lstm.bi_m, agent->lstm.bi_v, dL_dbi, HIDDEN_SIZE);
+    optimizer_step_vector_2(optim, agent->lstm.bc, agent->lstm.bc_m, agent->lstm.bc_v, dL_dbc, HIDDEN_SIZE);
+    optimizer_step_vector_2(optim, agent->lstm.bo, agent->lstm.bo_m, agent->lstm.bo_v, dL_dbo, HIDDEN_SIZE);
 }
 
 void train_epoch(Agent* agent, Optimizer* optim) {

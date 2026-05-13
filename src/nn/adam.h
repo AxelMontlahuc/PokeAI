@@ -13,7 +13,7 @@ struct Optimizer {
     int t;          // instant t
 };
 
-void optimizer_step_vector(Optimizer* optim, double param[MAX_OUTPUT_SIZE], double m[MAX_OUTPUT_SIZE], double v[MAX_OUTPUT_SIZE], double dL_dparam[MAX_OUTPUT_SIZE], int size);
-void optimizer_step_matrix(Optimizer* optim, double param[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double m[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double v[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_dparam[MAX_OUTPUT_SIZE][HIDDEN_SIZE], int rows, int cols);
+void optimizer_step_vector_1(Optimizer* optim, double param[MAX_OUTPUT_SIZE], double m[MAX_OUTPUT_SIZE], double v[MAX_OUTPUT_SIZE], double dL_dparam[MAX_OUTPUT_SIZE], int size);
+void optimizer_step_matrix_1(Optimizer* optim, double param[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double m[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double v[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_dparam[MAX_OUTPUT_SIZE][HIDDEN_SIZE], int rows, int cols);
 
 #endif

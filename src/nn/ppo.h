@@ -1,6 +1,7 @@
 #ifndef PPO_H
 #define PPO_H
 
+#include "dense.h"
 #include "config.h"
 
 struct Trajectory {
