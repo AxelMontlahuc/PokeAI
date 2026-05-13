@@ -1,8 +1,12 @@
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 #include "agent.h"
+#include "ppo.h"
+#include "adam.h"
 #include "config.h"
+#include "../game/reward.h"
 
 // Initialisation de l'agent
 Agent* init_agent() {
@@ -33,25 +37,105 @@ void softmax(double* logits, int size, double* output) {
     }
 }
 
+int action_choice(double probs[POLICY_OUTPUT_SIZE]) {
+    double r = (double)rand() / RAND_MAX;
+    double s = 0;
+    for (int i=0; i<POLICY_OUTPUT_SIZE; i++) {
+        s += probs[i];
+        if (r < s) {
+            return i;
+        }
+    }
+    return 0;
+}
+
 // Propagation pour tout l'agent
-double* agent_forward(Agent* agent, double* input, double** value_output, double** policy_output) {
-    lstm_forward(&agent->lstm, input);
+void agent_forward_t(Agent* agent, double state[INPUT_SIZE], Trajectory* traj, int t) {
+    lstm_forward(&agent->lstm, state);
 
     dense_forward(&agent->policy_head, agent->lstm.hidden_state, agent->policy_logits);
     dense_forward(&agent->value_head, agent->lstm.hidden_state, agent->value_logits);
-    
-    *policy_output = agent->policy_logits;
-    *value_output = agent->value_logits;
 
-    softmax(agent->policy_logits, agent->policy_head.output_size, agent->policy_output);
-    return agent->policy_output;
+    softmax(agent->policy_logits, agent->policy_head.output_size, traj->probs[t]);
+
+    traj->actions[t] = action_choice(traj->probs[t]);
+    traj->values[t] = agent->value_logits[0];
+
+    if (is_done(state)) {
+        traj->done[t] = 1; // Requis pour la GAE
+    } else {
+        traj->done[t] = 0;
+    }
+
+    if (t == 0) {
+        traj->rewards[t] = 0;
+    } else {
+        traj->rewards[t] = reward(traj->states[t-1], state);    
+    }
+
+    memcpy(traj->states[t], state, sizeof(double) * INPUT_SIZE);
+    memcpy(traj->hidden_states[t], agent->lstm.hidden_state, sizeof(double) * HIDDEN_SIZE);
+}
+
+void agent_forward(Agent* agent, Trajectory* traj) {
+    for (int t=0; t<BATCH_SIZE; t++) {
+        double state[INPUT_SIZE]; // TODO : Récupérer l'état depuis l'émulateur
+        agent_forward_t(agent, state, traj, t);
+        // TODO : Envoyer l'action choisie à l'émulateur
+    }
 }
 
 // Rétropropagation pour tout l'agent
-void agent_backward(Agent* agent) {
+void recompute_probs(Agent* agent, Trajectory* old_traj, double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE]) {
+    for (int t=0; t<BATCH_SIZE; t++) {
+        dense_forward(&agent->policy_head, old_traj->hidden_states[t], agent->policy_logits);
+        softmax(agent->policy_logits, agent->policy_head.output_size, new_probs[t]);
+    }
+}
+
+void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj) {
     // Rétropropagation de la value head/critic
-    // value_backward(&agent->value_head, ...);
+    double returns[BATCH_SIZE];
+    compute_advantages(traj->rewards, traj->values, traj->done, returns);
+    for (int t=0; t<BATCH_SIZE; t++) {
+        returns[t] += traj->values[t]; // R_t = A_t + V_t (les returns correspondent aux récompenses sur le long terme, c'est-à-dire la somme pondérées des récompenses futures)
+    }
+
+    double dL_dw_v[MAX_OUTPUT_SIZE][HIDDEN_SIZE] = {0};
+    double dL_db_v[MAX_OUTPUT_SIZE] = {0};
+    double dL_dinput_v[BATCH_SIZE][HIDDEN_SIZE] = {0};
+    value_backward(&agent->value_head, traj->values, returns, traj->hidden_states, dL_dw_v, dL_db_v, dL_dinput_v);
 
     // Rétropropagation de la policy head/actor
-    // policy_backward(&agent->policy_head, ...);
+    double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE];
+    recompute_probs(agent, traj, new_probs);
+
+    double dL_dw_p[MAX_OUTPUT_SIZE][HIDDEN_SIZE] = {0};
+    double dL_db_p[MAX_OUTPUT_SIZE] = {0};
+    double dL_dinput_p[BATCH_SIZE][HIDDEN_SIZE] = {0};
+    policy_backward(&agent->policy_head, traj, new_probs, dL_dw_p, dL_db_p, dL_dinput_p);
+
+    // Mise à jour des poids avec Adam
+    optim->t += 1;
+
+    optimizer_step_matrix(optim, agent->value_head.w, agent->value_head.w_m, agent->value_head.w_v, dL_dw_v, agent->value_head.output_size, agent->value_head.input_size);
+    optimizer_step_vector(optim, agent->value_head.b, agent->value_head.b_m, agent->value_head.b_v, dL_db_v, agent->value_head.output_size);
+
+    optimizer_step_matrix(optim, agent->policy_head.w, agent->policy_head.w_m, agent->policy_head.w_v, dL_dw_p, agent->policy_head.output_size, agent->policy_head.input_size);
+    optimizer_step_vector(optim, agent->policy_head.b, agent->policy_head.b_m, agent->policy_head.b_v, dL_db_p, agent->policy_head.output_size);
+}
+
+void train_epoch(Agent* agent, Optimizer* optim) {
+    Trajectory* traj = malloc(sizeof(Trajectory));
+
+    agent_forward(agent, traj);
+    agent_backward(agent, optim, traj);
+
+    free(traj);
+}
+
+void train(Agent* agent, Optimizer* optim, int epochs) {
+    for (int epoch=0; epoch<epochs; epoch++) {
+        train_epoch(agent, optim);
+    }
 }

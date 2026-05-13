@@ -47,6 +47,6 @@ struct Lstm {
 };
 
 void init_lstm(Lstm* lstm, int input_size, int hidden_size);
-void lstm_forward(Lstm* lstm, double* input);
+void lstm_forward(Lstm* lstm, double input[INPUT_SIZE]);
 
 #endif

@@ -5,7 +5,7 @@
 #include "config.h"
 
 // Initialisation de Xavier : distribution uniforme dans [-limit, limit] avec limit = sqrt(6 / (input_size + output_size))
-void xavier_init(double** matrix, int input_size, int output_size) {
+void xavier_init(double matrix[MAX_OUTPUT_SIZE][HIDDEN_SIZE], int input_size, int output_size) {
     double limit = sqrt(6.0 / (input_size + output_size));
 
     for (int i=0; i<output_size; i++) {
@@ -29,7 +29,7 @@ void init_dense(Dense* dense, int input_size, int output_size) {
         }
     }
 
-    xavier_init((double**)dense->w, input_size, output_size);
+    xavier_init(dense->w, input_size, output_size);
 
     for (int i = 0; i < output_size; i++) {
         dense->b[i] = 0.0;
@@ -50,17 +50,16 @@ void dense_forward(Dense* dense, double* input, double* logits) {
 }
 
 // Rétropropagation
-void dense_backward(Dense* dense,
-    double input[BATCH_SIZE][INPUT_SIZE], int batch_size, double dL_dlogits[BATCH_SIZE][MAX_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][INPUT_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][INPUT_SIZE]) {
+void dense_backward(Dense* dense, double input[BATCH_SIZE][HIDDEN_SIZE], double dL_dlogits[BATCH_SIZE][MAX_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][HIDDEN_SIZE]) {
     // Gradients pour les poids
     for (int i=0; i<dense->output_size; i++) {
         for (int j=0; j<dense->input_size; j++) {
             // Calcul du gradient moyen sur le batch
             double grad = 0;
-            for (int k=0; k<batch_size; k++) {
+            for (int k=0; k<BATCH_SIZE; k++) {
                 grad += dL_dlogits[k][i] * input[k][j];
             }
-            grad /= batch_size; // Moyenne sur le batch
+            grad /= BATCH_SIZE; // Moyenne sur le batch
 
             dL_dw[i][j] = grad;
         }
@@ -69,14 +68,14 @@ void dense_backward(Dense* dense,
     // Gradients pour les biais
     for (int i=0; i<dense->output_size; i++) {
         double grad = 0;
-        for (int k=0; k<batch_size; k++) {
+        for (int k=0; k<BATCH_SIZE; k++) {
             grad += dL_dlogits[k][i];
         }
-        dL_db[i] = grad / batch_size;
+        dL_db[i] = grad / BATCH_SIZE;
     }
 
     // Gradients pour l'entrée (nécessaire pour la rétropropagation dans les couches précédentes)
-    for (int k=0; k<batch_size; k++) {
+    for (int k=0; k<BATCH_SIZE; k++) {
         for (int j=0; j<dense->input_size; j++) {
             dL_dinput[k][j] = 0.0;
         }

@@ -31,14 +31,14 @@ double norm(double* x, int n) {
 }
 
 // Extraction d'une colonne d'une matrice
-void column(double** matrix, int j, int rows, double* col) {
+void column(double matrix[HIDDEN_SIZE][HIDDEN_SIZE], int j, int rows, double* col) {
     for (int i = 0; i < rows; i++) {
         col[i] = matrix[i][j];
     }
 }
 
 // Initialisation orthogonale : on prend la décomposition QR d'une matrice aléatoire et on utilise Q
-void orthogonal_init(double** matrix, int rows, int cols) {
+void orthogonal_init(double matrix[HIDDEN_SIZE][HIDDEN_SIZE], int rows, int cols) {
     double projection[HIDDEN_SIZE];
     double column_j_buf[HIDDEN_SIZE];
     double column_k_buf[HIDDEN_SIZE];
@@ -84,7 +84,7 @@ void orthogonal_init(double** matrix, int rows, int cols) {
 }
 
 // Initialisation de Xavier : distribution uniforme dans [-limit, limit] avec limit = sqrt(6 / (input_size + hidden_size))
-void xavier_init(double** matrix, int input_size, int hidden_size) {
+void xavier_init(double matrix[HIDDEN_SIZE][INPUT_SIZE], int input_size, int hidden_size) {
     double limit = sqrt(6.0 / (input_size + hidden_size));
     for (int i=0; i<hidden_size; i++) {
         for (int j=0; j<input_size; j++) {
@@ -96,7 +96,7 @@ void xavier_init(double** matrix, int input_size, int hidden_size) {
 }
 
 // Fonction auxiliaire pour l'initialisation des poids
-void init_weights(double** matrix, int input_size, int hidden_size) {
+void init_weights(double matrix[HIDDEN_SIZE][COL_SIZE], int input_size, int hidden_size) {
     double wx[HIDDEN_SIZE][INPUT_SIZE];
     double wh[HIDDEN_SIZE][HIDDEN_SIZE];
 
@@ -109,8 +109,8 @@ void init_weights(double** matrix, int input_size, int hidden_size) {
         }
     }
 
-    xavier_init((double**)wx, input_size, hidden_size);
-    orthogonal_init((double**)wh, hidden_size, hidden_size);
+    xavier_init(wx, input_size, hidden_size);
+    orthogonal_init(wh, hidden_size, hidden_size);
 
     for (int i = 0; i < hidden_size; i++) {
         for (int j = 0; j < input_size; j++) {
@@ -127,7 +127,7 @@ void init_lstm(Lstm* lstm, int input_size, int hidden_size) {
     lstm->input_size = input_size;
     lstm->hidden_size = hidden_size;
     
-    for (int i = 0; i < input_size; i++) {
+    for (int i = 0; i < hidden_size; i++) {
         lstm->hidden_state[i] = 0.0;
         lstm->cell_state[i] = 0.0;
     }
@@ -179,7 +179,7 @@ double sigmoid(double x) {
     return 1.0 / (1.0 + exp(-x));
 }
 
-double matrix_vector_product(double** matrix, double* vector, int rows, int cols, double* result) {
+void matrix_vector_product(double matrix[HIDDEN_SIZE][COL_SIZE], double* vector, int rows, int cols, double* result) {
     for (int i=0; i<rows; i++) {
         result[i] = 0.0;
         for (int j=0; j<cols; j++) {
@@ -189,7 +189,7 @@ double matrix_vector_product(double** matrix, double* vector, int rows, int cols
 }
 
 // Propagation
-void lstm_forward(Lstm* lstm, double* input) {
+void lstm_forward(Lstm* lstm, double input[INPUT_SIZE]) {
     // Concaténation de l'entrée et de l'état caché dans un array z
     int z_size = lstm->input_size + lstm->hidden_size;
     double z[COL_SIZE];
@@ -212,10 +212,10 @@ void lstm_forward(Lstm* lstm, double* input) {
     double wcz[HIDDEN_SIZE];
     double woz[HIDDEN_SIZE];
     
-    matrix_vector_product((double**)lstm->wf, z, lstm->hidden_size, z_size, wfz);
-    matrix_vector_product((double**)lstm->wi, z, lstm->hidden_size, z_size, wiz);
-    matrix_vector_product((double**)lstm->wc, z, lstm->hidden_size, z_size, wcz);
-    matrix_vector_product((double**)lstm->wo, z, lstm->hidden_size, z_size, woz);
+    matrix_vector_product(lstm->wf, z, lstm->hidden_size, z_size, wfz);
+    matrix_vector_product(lstm->wi, z, lstm->hidden_size, z_size, wiz);
+    matrix_vector_product(lstm->wc, z, lstm->hidden_size, z_size, wcz);
+    matrix_vector_product(lstm->wo, z, lstm->hidden_size, z_size, woz);
 
     for (int j=0; j<lstm->hidden_size; j++) {
         f[j] = sigmoid(wfz[j] + lstm->bf[j]);

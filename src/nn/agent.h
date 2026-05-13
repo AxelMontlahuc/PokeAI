@@ -14,10 +14,16 @@ struct Agent {
     
     double policy_logits[POLICY_OUTPUT_SIZE];
     double value_logits[VALUE_OUTPUT_SIZE];
-    double policy_output[POLICY_OUTPUT_SIZE];
 };
 
 Agent* init_agent();
-double* agent_forward(Agent* agent, double* input, double** value_output, double** policy_output);
+
+int action_choice(double probs[POLICY_OUTPUT_SIZE]);
+void agent_forward_t(Agent* agent, double state[INPUT_SIZE], Trajectory* traj, int t);
+void agent_forward(Agent* agent, Trajectory* traj);
+void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj);
+void recompute_probs(Agent* agent, Trajectory* old_traj, double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE]);
+void train_epoch(Agent* agent, Optimizer* optim);
+void train(Agent* agent, Optimizer* optim, int epochs);
 
 #endif

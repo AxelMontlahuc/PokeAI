@@ -19,14 +19,14 @@ double value_loss(double* pred, double* target, int size) {
 }
 
 // Rétropropagation de la value head/critic
-void value_backward(Dense* value_head, double pred[BATCH_SIZE], double target[BATCH_SIZE], double input[BATCH_SIZE][HIDDEN_SIZE], int batch_size, double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][HIDDEN_SIZE]) {
+void value_backward(Dense* value_head, double pred[BATCH_SIZE], double target[BATCH_SIZE], double input[BATCH_SIZE][HIDDEN_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][HIDDEN_SIZE]) {
     double dL_dlogits[BATCH_SIZE][MAX_OUTPUT_SIZE];
 
-    for (int t=0; t<batch_size; t++) {
+    for (int t=0; t<BATCH_SIZE; t++) {
         dL_dlogits[t][0] = 2 * (pred[t] - target[t]); // dL/dlogits = 2 * (pred - target)
     }
 
-    dense_backward(value_head, input, batch_size, dL_dlogits, dL_dw, dL_db, dL_dinput);
+    dense_backward(value_head, input, dL_dlogits, dL_dw, dL_db, dL_dinput);
 }
 
 // Calcul des avantages via la méthode GAE (Generalized Advantage Estimation)
@@ -87,5 +87,5 @@ void policy_backward(Dense* policy_head, Trajectory* trajectories, double new_pr
         }
     }
 
-    dense_backward(policy_head, trajectories->hidden_states, BATCH_SIZE, dL_dlogits, dL_dw, dL_db, dL_dinput);
+    dense_backward(policy_head, trajectories->hidden_states, dL_dlogits, dL_dw, dL_db, dL_dinput);
 }
