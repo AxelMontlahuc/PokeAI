@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 #include "ppo.h"
@@ -6,20 +7,20 @@
 #include "config.h"
 
 // Fonction coût de la value head/critic (MSE)
-double value_loss(double* pred, double* target, int size) {
+double value_loss(double pred[BATCH_SIZE], double target[BATCH_SIZE]) {
     double loss = 0;
 
-    for (int i=0; i<size; i++) {
+    for (int i=0; i<BATCH_SIZE; i++) {
         double diff = pred[i] - target[i];
         loss += diff * diff;
     }
-    loss /= size;
+    loss /= BATCH_SIZE;
 
     return loss;
 }
 
 // Rétropropagation de la value head/critic
-void value_backward(Dense* value_head, double pred[BATCH_SIZE], double target[BATCH_SIZE], double input[BATCH_SIZE][HIDDEN_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][HIDDEN_SIZE]) {
+double value_backward(Dense* value_head, double pred[BATCH_SIZE], double target[BATCH_SIZE], double input[BATCH_SIZE][HIDDEN_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][HIDDEN_SIZE]) {
     double dL_dlogits[BATCH_SIZE][MAX_OUTPUT_SIZE];
 
     for (int t=0; t<BATCH_SIZE; t++) {
@@ -27,6 +28,7 @@ void value_backward(Dense* value_head, double pred[BATCH_SIZE], double target[BA
     }
 
     dense_backward(value_head, input, dL_dlogits, dL_dw, dL_db, dL_dinput);
+    return value_loss(pred, target);
 }
 
 // Calcul des avantages via la méthode GAE (Generalized Advantage Estimation)
@@ -39,7 +41,7 @@ void compute_advantages(double rewards[BATCH_SIZE], double values[BATCH_SIZE], i
 }
 
 // Fonction de coût de la policy head/actor i.e. L^CLIP = E[ min(r_t(θ) * A_t, clip(r_t(θ), 1-ε, 1+ε) * A_t) ] avec r_t(θ) = π_θ(a_t|s_t) / π_θ_old(a_t|s_t)
-double ppo_loss(double prob[BATCH_SIZE][POLICY_OUTPUT_SIZE], double old_prob[BATCH_SIZE][POLICY_OUTPUT_SIZE], double advantages[BATCH_SIZE], int actions[BATCH_SIZE], double dlogp[BATCH_SIZE]) {
+double ppo_loss(Trajectory* traj, double prob[BATCH_SIZE][POLICY_OUTPUT_SIZE], double old_prob[BATCH_SIZE][POLICY_OUTPUT_SIZE], double advantages[BATCH_SIZE], int actions[BATCH_SIZE], double dlogp[BATCH_SIZE]) {
     double loss = 0;
 
     for (int t=0; t<BATCH_SIZE; t++) {
@@ -64,6 +66,9 @@ double ppo_loss(double prob[BATCH_SIZE][POLICY_OUTPUT_SIZE], double old_prob[BAT
             dlogp[t] = -advantages[t] * unclipped; // dL/dlogp = -A_t * r_t
         }
 
+        traj->ratios[t] = fmin(unclipped, clipped);
+        traj->unclipped_ratios[t] = unclipped;
+        traj->clipped[t] = (clipped != unclipped);
         double min = fmin(unclipped * advantages[t], clipped * advantages[t]);
         loss -= min;
     }
@@ -73,19 +78,27 @@ double ppo_loss(double prob[BATCH_SIZE][POLICY_OUTPUT_SIZE], double old_prob[BAT
 }
 
 // Rétropropagation de la policy head/actor (y compris la fonction softmax)
-void policy_backward(Dense* policy_head, Trajectory* trajectories, double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][HIDDEN_SIZE]) {
+void policy_backward(Dense* policy_head, Trajectory* traj, double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][HIDDEN_SIZE]) {
     double advantages[BATCH_SIZE];
-    compute_advantages(trajectories->rewards, trajectories->values, trajectories->done, advantages);
+    compute_advantages(traj->rewards, traj->values, traj->done, advantages);
+    memcpy(traj->advantages, advantages, BATCH_SIZE * sizeof(double));
 
     double dlogp[BATCH_SIZE];
-    double loss = ppo_loss(new_probs, trajectories->probs, advantages, trajectories->actions, dlogp);
+    traj->ppo_loss = ppo_loss(traj, new_probs, traj->probs, advantages, traj->actions, dlogp);
 
     double dL_dlogits[BATCH_SIZE][MAX_OUTPUT_SIZE];
     for (int t=0; t<BATCH_SIZE; t++) {
         for (int i=0; i<POLICY_OUTPUT_SIZE; i++) {
-            dL_dlogits[t][i] = dlogp[t] * (new_probs[t][i] - (i == trajectories->actions[t])); // dL/dlogits = dL/dlogp * (dlogp/dlogits) avec dlogp/dlogits = new_probs - one_hot(actions)s
+            dL_dlogits[t][i] = dlogp[t] * (new_probs[t][i] - (i == traj->actions[t])); // dL/dlogits = dL/dlogp * (dlogp/dlogits) avec dlogp/dlogits = new_probs - one_hot(actions)s
+        }
+
+        traj->kl[t] = 0;
+        for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
+            double p = traj->probs[t][j];
+            double q = new_probs[t][j];
+            traj->kl[t] += p * (log(p + 1e-10) - log(q + 1e-10)); // KL(π_old || π_new) = Σ(π_old * (log(π_old) - log(π_new)))
         }
     }
 
-    dense_backward(policy_head, trajectories->hidden_states, dL_dlogits, dL_dw, dL_db, dL_dinput);
+    dense_backward(policy_head, traj->hidden_states, dL_dlogits, dL_dw, dL_db, dL_dinput);
 }

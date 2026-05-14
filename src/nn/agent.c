@@ -104,7 +104,7 @@ void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj) {
     double dL_dw_v[MAX_OUTPUT_SIZE][HIDDEN_SIZE] = {0};
     double dL_db_v[MAX_OUTPUT_SIZE] = {0};
     double dL_dinput_v[BATCH_SIZE][HIDDEN_SIZE] = {0};
-    value_backward(&agent->value_head, traj->values, returns, traj->hidden_states, dL_dw_v, dL_db_v, dL_dinput_v);
+    traj->value_loss = value_backward(&agent->value_head, traj->values, returns, traj->hidden_states, dL_dw_v, dL_db_v, dL_dinput_v);
 
     // Rétropropagation de la policy head/actor
     double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE];
@@ -114,15 +114,6 @@ void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj) {
     double dL_db_p[MAX_OUTPUT_SIZE] = {0};
     double dL_dinput_p[BATCH_SIZE][HIDDEN_SIZE] = {0};
     policy_backward(&agent->policy_head, traj, new_probs, dL_dw_p, dL_db_p, dL_dinput_p);
-
-    // Mise à jour des poids avec Adam
-    optim->t += 1;
-
-    optimizer_step_matrix_1(optim, agent->value_head.w, agent->value_head.w_m, agent->value_head.w_v, dL_dw_v, agent->value_head.output_size, agent->value_head.input_size);
-    optimizer_step_vector_1(optim, agent->value_head.b, agent->value_head.b_m, agent->value_head.b_v, dL_db_v, agent->value_head.output_size);
-
-    optimizer_step_matrix_1(optim, agent->policy_head.w, agent->policy_head.w_m, agent->policy_head.w_v, dL_dw_p, agent->policy_head.output_size, agent->policy_head.input_size);
-    optimizer_step_vector_1(optim, agent->policy_head.b, agent->policy_head.b_m, agent->policy_head.b_v, dL_db_p, agent->policy_head.output_size);
 
     // Rétropropagation à travers le LSTM
     double dL_dwf[HIDDEN_SIZE][COL_SIZE] = {0};
@@ -137,6 +128,15 @@ void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj) {
     double c_ini[HIDDEN_SIZE] = {0}; // On suppose que la mémoire à long terme est initialisée à zéro au début de chaque trajectoire pour l'instant, mais il faudra à terme le stocker et le faire passer d'une trajectoire à l'autre
     lstm_backward(&agent->lstm, traj, dL_dinput_v, dL_dinput_p, c_ini, dL_dwf, dL_dwi, dL_dwc, dL_dwo, dL_dbf, dL_dbi, dL_dbc, dL_dbo);
 
+    // Mise à jour des poids avec Adam
+    optim->t += 1;
+
+    optimizer_step_matrix_1(optim, agent->value_head.w, agent->value_head.w_m, agent->value_head.w_v, dL_dw_v, agent->value_head.output_size, agent->value_head.input_size);
+    optimizer_step_vector_1(optim, agent->value_head.b, agent->value_head.b_m, agent->value_head.b_v, dL_db_v, agent->value_head.output_size);
+
+    optimizer_step_matrix_1(optim, agent->policy_head.w, agent->policy_head.w_m, agent->policy_head.w_v, dL_dw_p, agent->policy_head.output_size, agent->policy_head.input_size);
+    optimizer_step_vector_1(optim, agent->policy_head.b, agent->policy_head.b_m, agent->policy_head.b_v, dL_db_p, agent->policy_head.output_size);
+
     // Mise à jour des poids du LSTM avec Adam
     optimizer_step_matrix_2(optim, agent->lstm.wf, agent->lstm.wf_m, agent->lstm.wf_v, dL_dwf, HIDDEN_SIZE, COL_SIZE);
     optimizer_step_matrix_2(optim, agent->lstm.wi, agent->lstm.wi_m, agent->lstm.wi_v, dL_dwi, HIDDEN_SIZE, COL_SIZE);
@@ -148,11 +148,81 @@ void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj) {
     optimizer_step_vector_2(optim, agent->lstm.bo, agent->lstm.bo_m, agent->lstm.bo_v, dL_dbo, HIDDEN_SIZE);
 }
 
+double compute_std(double array[BATCH_SIZE], double mean) {
+    double variance = 0;
+
+    for (int i=0; i<BATCH_SIZE; i++) {
+        double diff = array[i] - mean;
+        variance += diff * diff;
+    }
+    variance /= BATCH_SIZE;
+
+    return sqrt(variance);
+}
+
+void logging(Trajectory* traj) {
+    double loss_ppo = traj->ppo_loss;
+    double loss_value = traj->value_loss;
+    double reward_sum = 0;
+    double value_mean = 0;
+    double value_std = 0;
+    double advantage_mean = 0;
+    double advantage_std = 0;
+    double ratio_mean = 0;
+    double unclipped_ratio_mean = 0;
+    double clipped_percentage = 0;
+    double mean_entropy = 0;
+    double kl_mean = 0;
+    double actions[POLICY_OUTPUT_SIZE] = {0};
+
+    for (int t=0; t<BATCH_SIZE; t++) {
+        reward_sum += traj->rewards[t];
+        value_mean += traj->values[t];
+        advantage_mean += traj->advantages[t];
+        ratio_mean += traj->ratios[t];
+        unclipped_ratio_mean += traj->unclipped_ratios[t];
+        clipped_percentage += traj->clipped[t];
+
+        double current_entropy = 0;
+        for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
+            current_entropy -= traj->probs[t][j] * log(traj->probs[t][j] + 1e-10); // On évite log(0)
+        }
+        mean_entropy += current_entropy;
+        kl_mean += traj->kl[t];
+        actions[traj->actions[t]] += 1;
+    }
+
+    value_mean /= BATCH_SIZE;
+    advantage_mean /= BATCH_SIZE;
+    value_std = compute_std(traj->values, value_mean);
+    advantage_std = compute_std(traj->advantages, advantage_mean);
+    ratio_mean /= BATCH_SIZE;
+    unclipped_ratio_mean /= BATCH_SIZE;
+    clipped_percentage /= BATCH_SIZE;
+    clipped_percentage *= 100;
+    kl_mean /= BATCH_SIZE;
+    mean_entropy /= BATCH_SIZE;
+
+    for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
+        actions[j] /= BATCH_SIZE;
+        actions[j] *= 100;
+    }
+
+    printf("Reward sum: %.4f | Value mean: %.4f | Value std: %.4f | Advantage mean: %.4f | Advantage std: %.4f | Ratio mean: %.4f | Unclipped ratio mean: %.4f | Clipped percentage: %.2f%% | Mean entropy: %.4f | KL divergence: %.4f\n", reward_sum, value_mean, value_std, advantage_mean, advantage_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, mean_entropy, kl_mean);
+    printf("Action distribution: ");
+    for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
+        printf("Action %d: %.2f%%, ", j, actions[j]);
+    }
+    printf("\n\n");
+}
+
 void train_epoch(Agent* agent, Optimizer* optim) {
     Trajectory* traj = malloc(sizeof(Trajectory));
 
     agent_forward(agent, traj);
     agent_backward(agent, optim, traj);
+
+    logging(traj);
 
     free(traj);
 }

@@ -249,7 +249,7 @@ void lstm_forward(Lstm* lstm, Trajectory* traj, double input[INPUT_SIZE], int t)
 
 // Rétropropagation
 void lstm_backward(Lstm* lstm, Trajectory* traj, double dL_dh_v[BATCH_SIZE][HIDDEN_SIZE], double dL_dh_p[BATCH_SIZE][HIDDEN_SIZE], double c_ini[HIDDEN_SIZE], double dL_dwf[HIDDEN_SIZE][COL_SIZE], double dL_dwi[HIDDEN_SIZE][COL_SIZE], double dL_dwc[HIDDEN_SIZE][COL_SIZE], double dL_dwo[HIDDEN_SIZE][COL_SIZE], double dL_dbf[HIDDEN_SIZE], double dL_dbi[HIDDEN_SIZE], double dL_dbc[HIDDEN_SIZE], double dL_dbo[HIDDEN_SIZE]) {
-    double dL_dh[BATCH_SIZE][HIDDEN_SIZE];
+    double dL_dh[BATCH_SIZE][HIDDEN_SIZE] = {0};
     double dL_do[BATCH_SIZE][HIDDEN_SIZE];
     double dL_dc[BATCH_SIZE][HIDDEN_SIZE];
     double dL_df[BATCH_SIZE][HIDDEN_SIZE];
@@ -259,7 +259,7 @@ void lstm_backward(Lstm* lstm, Trajectory* traj, double dL_dh_v[BATCH_SIZE][HIDD
     for (int t=BATCH_SIZE-1; t>=0; t--) {
         //dL/dh = dL/dh_value_head + dL/dh_policy_head
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            dL_dh[t][j] = dL_dh_v[t][j] + dL_dh_p[t][j];
+            dL_dh[t][j] += dL_dh_v[t][j] + dL_dh_p[t][j];
         }
 
         // dL_do = dL/dh * tanh(c) (où * est le produit de Hadamard)
@@ -328,19 +328,5 @@ void lstm_backward(Lstm* lstm, Trajectory* traj, double dL_dh_v[BATCH_SIZE][HIDD
                 dL_dh[t-1][j] += dz[INPUT_SIZE + j];
             }
         }
-    }
-
-    for (int j=0; j<HIDDEN_SIZE; j++) {
-        for (int k=0; k<COL_SIZE; k++) {
-            dL_dwf[j][k] /= BATCH_SIZE;
-            dL_dwi[j][k] /= BATCH_SIZE;
-            dL_dwc[j][k] /= BATCH_SIZE;
-            dL_dwo[j][k] /= BATCH_SIZE;
-        }
-
-        dL_dbf[j] /= BATCH_SIZE;
-        dL_dbi[j] /= BATCH_SIZE;
-        dL_dbc[j] /= BATCH_SIZE;
-        dL_dbo[j] /= BATCH_SIZE;
     }
 }
