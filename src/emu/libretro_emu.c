@@ -25,7 +25,7 @@ static uint8_t *g_last_rgb = NULL;
 static unsigned g_last_w = 0, g_last_h = 0;
 
 static enum retro_pixel_format g_retro_pixfmt = RETRO_PIXEL_FORMAT_XRGB8888;
-static struct retro_memory_map g_memmap = (struct retro_memory_map){0};
+static struct retro_memory_map g_memmap = {0};
 static struct retro_memory_descriptor *g_memmap_desc = NULL;
 
 static unsigned g_joy[RETRO_DEVICE_ID_JOYPAD_R3+1] = { 0 };
@@ -94,35 +94,38 @@ static bool core_environment(unsigned cmd, void *data) {
 	bool *bval;
 
 	switch (cmd) {
-	case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
-		struct retro_log_callback *cb = (struct retro_log_callback *)data; 
-		cb->log = core_log; 
-		return true; 
+	case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: {
+		struct retro_log_callback *cb = (struct retro_log_callback *)data;
+		cb->log = core_log;
+		return true;
+	}
 	case RETRO_ENVIRONMENT_GET_CAN_DUPE:
-		bval = (bool*)data; 
-		*bval = true; 
+		bval = (bool*)data;
+		*bval = true;
 		return true;
-	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
-		const enum retro_pixel_format *fmt = (enum retro_pixel_format *)data;
-		if (*fmt > RETRO_PIXEL_FORMAT_RGB565) return false; 
-		g_retro_pixfmt = *fmt; 
+	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
+		const enum retro_pixel_format *fmt = (const enum retro_pixel_format *)data;
+		if (*fmt > RETRO_PIXEL_FORMAT_RGB565) return false;
+		g_retro_pixfmt = *fmt;
 		return true;
+	}
 	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
 	case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
 		*(const char **)data = "."; 
 		return true;
-	case RETRO_ENVIRONMENT_SET_MEMORY_MAPS:
+	case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: {
 		const struct retro_memory_map *m = (const struct retro_memory_map *)data;
 		free(g_memmap_desc); g_memmap_desc = NULL; g_memmap.descriptors = NULL; g_memmap.num_descriptors = 0;
 		if (m && m->num_descriptors && m->descriptors) {
 			g_memmap_desc = (struct retro_memory_descriptor*)malloc(sizeof(*g_memmap_desc) * m->num_descriptors);
-			if (g_memmap_desc) { 
+			if (g_memmap_desc) {
 				memcpy(g_memmap_desc, m->descriptors, sizeof(*g_memmap_desc) * m->num_descriptors);
-				g_memmap.descriptors = g_memmap_desc; 
+				g_memmap.descriptors = g_memmap_desc;
 				g_memmap.num_descriptors = m->num_descriptors;
 			}
 		}
 		return true;
+	}
 	default: 
 		return false;
 	}
@@ -196,7 +199,7 @@ static int16_t core_input_state(unsigned port, unsigned device, unsigned index, 
 	if (port || index || device != RETRO_DEVICE_JOYPAD)
 		return 0;
 
-	return g_joy[id];
+	return (int16_t)g_joy[id];
 }
 
 static void core_audio_sample(int16_t left, int16_t right) { (void)left; (void)right; }
@@ -266,7 +269,7 @@ static void core_load_game(const char *filename) {
 		goto libc_error;
 
 	fseek(file, 0, SEEK_END);
-	info.size = ftell(file);
+	info.size = (size_t)ftell(file);
 	rewind(file);
 
 	g_retro.retro_get_system_info(&system);
@@ -490,9 +493,9 @@ static int eval_tile_property(int type, uint16_t tile_id, uint8_t col, int mx, i
         if (events >= 0x08000000) {
             uint8_t count = read8(events + 0x01);
             uint32_t warps = read32(events + 0x08);
-            for (int w = 0; warps >= 0x08000000 && w < count; w++) {
-                if ((int16_t)read16(warps + w * 8) == mx && (int16_t)read16(warps + w * 8 + 2) == my) return 1;
-            }
+			for (unsigned w = 0; warps >= 0x08000000 && w < count; w++) {
+				if ((int16_t)read16(warps + (uint32_t)w * 8u) == mx && (int16_t)read16(warps + (uint32_t)w * 8u + 2u) == my) return 1;
+			}
         }
         return 0;
     }
@@ -501,10 +504,12 @@ static int eval_tile_property(int type, uint16_t tile_id, uint8_t col, int mx, i
         // On utilise le tileset primaire ou secondaire selon l'ID de la tile
         uint32_t ts = (tile_id < 512) ? ts_primary : ts_secondary;
         uint32_t attrs = ts ? read32(ts + 0x10) : 0;
-        if (attrs >= 0x08000000) {
-            uint8_t behavior = read16(attrs + ((tile_id % 512) * 2)) & 0xFF;
-            return (behavior == 0x02 || behavior == 0x03) ? 1 : 0;
-        }
+		if (attrs >= 0x08000000) {
+			uint32_t tile_off = (uint32_t)(tile_id % 512) * 2u;
+			uint16_t behavior16 = read16(attrs + tile_off);
+			uint8_t behavior = (uint8_t)(behavior16 & 0xFFu);
+			return (behavior == 0x02 || behavior == 0x03) ? 1 : 0;
+		}
     }
     
     return 0;
@@ -513,8 +518,8 @@ static int eval_tile_property(int type, uint16_t tile_id, uint8_t col, int mx, i
 // Fonction pour générer une map de "comportement" (collision, interaction, herbe) autour du joueur avec des 0 et des 1 seulement
 void gba_behavior_map(int type, int state[INPUT_SIZE], int player_x, int player_y) {
     uint32_t layout = read32(0x02037318);
-    uint32_t map_w = read32(layout + 0x00);
-    uint32_t map_h = read32(layout + 0x04);
+	uint32_t map_w = read32(layout + 0x00);
+	uint32_t map_h = read32(layout + 0x04);
     uint32_t map_data = read32(layout + 0x0C);
     uint32_t ts_pri = read32(layout + 0x10);
     uint32_t ts_sec = read32(layout + 0x14);
@@ -529,13 +534,14 @@ void gba_behavior_map(int type, int state[INPUT_SIZE], int player_x, int player_
             int mx = px + (c - 5);
             int my = py + (r - 5);
             
-            // Check des limites de la map
-            if (mx < 0 || my < 0 || mx >= map_w || my >= map_h) {
+			// Check des limites de la map
+			if (mx < 0 || my < 0 || (uint32_t)mx >= map_w || (uint32_t)my >= map_h) {
                 behavior_out[r][c] = (type == 0) ? 1 : 0; // Type 0 : collision
                 continue;
             }
             
-            uint16_t tile = read16(map_data + (my * map_w + mx) * 2);
+			uint32_t pos = (uint32_t)my * map_w + (uint32_t)mx;
+			uint16_t tile = read16(map_data + pos * 2u);
             behavior_out[r][c] = eval_tile_property(type, tile & 0x03FF, (tile >> 10) & 0x03, mx, my, ts_pri, ts_sec);
         }
     }

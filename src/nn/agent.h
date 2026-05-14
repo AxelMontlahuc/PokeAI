@@ -3,6 +3,7 @@
 
 #include "lstm.h"
 #include "dense.h"
+#include "adam.h"
 #include "config.h"
 
 typedef struct Agent Agent;
@@ -19,7 +20,7 @@ struct Agent {
 Agent* init_agent();
 
 int action_choice(double probs[POLICY_OUTPUT_SIZE]);
-void agent_forward_t(Agent* agent, double state[INPUT_SIZE], Trajectory* traj, int t);
+void agent_forward_t(Agent* agent, int state[INPUT_SIZE], Trajectory* traj, int t);
 void agent_forward(Agent* agent, Trajectory* traj);
 void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj);
 void recompute_probs(Agent* agent, Trajectory* old_traj, double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE]);

@@ -5,7 +5,7 @@
 #include "config.h"
 
 // Initialisation de Xavier : distribution uniforme dans [-limit, limit] avec limit = sqrt(6 / (input_size + output_size))
-void xavier_init(double matrix[MAX_OUTPUT_SIZE][HIDDEN_SIZE], int input_size, int output_size) {
+static void xavier_init_dense(double matrix[MAX_OUTPUT_SIZE][HIDDEN_SIZE], int input_size, int output_size) {
     double limit = sqrt(6.0 / (input_size + output_size));
 
     for (int i=0; i<output_size; i++) {
@@ -29,7 +29,7 @@ void init_dense(Dense* dense, int input_size, int output_size) {
         }
     }
 
-    xavier_init(dense->w, input_size, output_size);
+    xavier_init_dense(dense->w, input_size, output_size);
 
     for (int i = 0; i < output_size; i++) {
         dense->b[i] = 0.0;

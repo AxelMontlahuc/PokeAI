@@ -18,7 +18,6 @@ struct Dense {
     double b_v[MAX_OUTPUT_SIZE];
 };
 
-void xavier_init(double matrix[MAX_OUTPUT_SIZE][HIDDEN_SIZE], int input_size, int output_size);
 void init_dense(Dense* dense, int input_size, int output_size);
 void dense_forward(Dense* dense, double* input, double* logits);
 void dense_backward(Dense* dense,

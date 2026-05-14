@@ -1,9 +1,11 @@
 #ifndef REWARD_H
 #define REWARD_H
 
+#include <stdbool.h>
+
 #include "config.h"
 
-double reward(double old_state[INPUT_SIZE], double new_state[INPUT_SIZE]);
-bool is_done(double state[INPUT_SIZE]);
+double reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]);
+bool is_done(void);
 
 #endif

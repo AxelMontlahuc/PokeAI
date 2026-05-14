@@ -86,7 +86,7 @@ void orthogonal_init(double matrix[HIDDEN_SIZE][HIDDEN_SIZE], int rows, int cols
 }
 
 // Initialisation de Xavier : distribution uniforme dans [-limit, limit] avec limit = sqrt(6 / (input_size + hidden_size))
-void xavier_init(double matrix[HIDDEN_SIZE][INPUT_SIZE], int input_size, int hidden_size) {
+static void xavier_init_lstm(double matrix[HIDDEN_SIZE][INPUT_SIZE], int input_size, int hidden_size) {
     double limit = sqrt(6.0 / (input_size + hidden_size));
     for (int i=0; i<hidden_size; i++) {
         for (int j=0; j<input_size; j++) {
@@ -111,7 +111,7 @@ void init_weights(double matrix[HIDDEN_SIZE][COL_SIZE], int input_size, int hidd
         }
     }
 
-    xavier_init(wx, input_size, hidden_size);
+    xavier_init_lstm(wx, input_size, hidden_size);
     orthogonal_init(wh, hidden_size, hidden_size);
 
     for (int i = 0; i < hidden_size; i++) {
@@ -191,19 +191,19 @@ void matrix_vector_product(double matrix[HIDDEN_SIZE][COL_SIZE], double* vector,
 }
 
 // Propagation
-void lstm_forward(Lstm* lstm, Trajectory* traj, double input[INPUT_SIZE], int t) {
+void lstm_forward(Lstm* lstm, Trajectory* traj, int input[INPUT_SIZE], int t) {
     // Concaténation de l'entrée et de l'état caché dans un array z
     int z_size = lstm->input_size + lstm->hidden_size;
     double z[COL_SIZE];
     
     for (int i=0; i<lstm->input_size; i++) {
-        z[i] = input[i];
+        z[i] = (double)input[i];
     }
     for (int i=0; i<lstm->hidden_size; i++) {
         z[lstm->input_size + i] = lstm->hidden_state[i];
     }
 
-    memcpy(traj->z[t], z, sizeof(double) * z_size); // Stockage de z pour la rétropropagation
+    memcpy(traj->z[t], z, sizeof(double) * (size_t)z_size); // Stockage de z pour la rétropropagation
 
     // Calcul des portes
     double f[HIDDEN_SIZE];
@@ -239,12 +239,12 @@ void lstm_forward(Lstm* lstm, Trajectory* traj, double input[INPUT_SIZE], int t)
     }
 
     // Stockage des portes pour la rétropropagation
-    memcpy(traj->f[t], f, sizeof(double) * lstm->hidden_size);
-    memcpy(traj->i[t], i_gate, sizeof(double) * lstm->hidden_size);
-    memcpy(traj->g[t], g, sizeof(double) * lstm->hidden_size);
-    memcpy(traj->o[t], o, sizeof(double) * lstm->hidden_size);
-    memcpy(traj->hidden_states[t], lstm->hidden_state, sizeof(double) * HIDDEN_SIZE);
-    memcpy(traj->c[t], lstm->cell_state, sizeof(double) * HIDDEN_SIZE);
+    memcpy(traj->f[t], f, sizeof(double) * (size_t)lstm->hidden_size); // On cast à size_t aka unsigned long pour éviter les warnings
+    memcpy(traj->i[t], i_gate, sizeof(double) * (size_t)lstm->hidden_size);
+    memcpy(traj->g[t], g, sizeof(double) * (size_t)lstm->hidden_size);
+    memcpy(traj->o[t], o, sizeof(double) * (size_t)lstm->hidden_size);
+    memcpy(traj->hidden_states[t], lstm->hidden_state, sizeof(double) * (size_t)HIDDEN_SIZE);
+    memcpy(traj->c[t], lstm->cell_state, sizeof(double) * (size_t)HIDDEN_SIZE);
 }
 
 // Rétropropagation

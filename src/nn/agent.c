@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 
@@ -52,7 +53,7 @@ int action_choice(double probs[POLICY_OUTPUT_SIZE]) {
 }
 
 // Propagation pour tout l'agent
-void agent_forward_t(Agent* agent, double state[INPUT_SIZE], Trajectory* traj, int t) {
+void agent_forward_t(Agent* agent, int state[INPUT_SIZE], Trajectory* traj, int t) {
     lstm_forward(&agent->lstm, traj, state, t);
 
     dense_forward(&agent->policy_head, agent->lstm.hidden_state, agent->policy_logits);
@@ -63,7 +64,7 @@ void agent_forward_t(Agent* agent, double state[INPUT_SIZE], Trajectory* traj, i
     traj->actions[t] = action_choice(traj->probs[t]);
     traj->values[t] = agent->value_logits[0];
 
-    if (is_done(state)) {
+    if (is_done()) {
         traj->done[t] = 1; // Requis pour la GAE
     } else {
         traj->done[t] = 0;
@@ -75,12 +76,12 @@ void agent_forward_t(Agent* agent, double state[INPUT_SIZE], Trajectory* traj, i
         traj->rewards[t] = reward(traj->states[t-1], state);    
     }
 
-    memcpy(traj->states[t], state, sizeof(double) * INPUT_SIZE);
+    memcpy(traj->states[t], state, sizeof(int) * INPUT_SIZE);
 }
 
 void agent_forward(Agent* agent, Trajectory* traj) {
     for (int t=0; t<BATCH_SIZE; t++) {
-        double state[INPUT_SIZE];
+        int state[INPUT_SIZE];
         gba_state(state);
 
         agent_forward_t(agent, state, traj, t);
@@ -213,7 +214,7 @@ void logging(Trajectory* traj) {
         actions[j] *= 100;
     }
 
-    printf("Reward sum: %.4f | Value mean: %.4f | Value std: %.4f | Advantage mean: %.4f | Advantage std: %.4f | Ratio mean: %.4f | Unclipped ratio mean: %.4f | Clipped percentage: %.2f%% | Mean entropy: %.4f | KL divergence: %.4f\n", reward_sum, value_mean, value_std, advantage_mean, advantage_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, mean_entropy, kl_mean);
+    printf("Reward sum: %.4f | | Loss: %.4f | Value mean: %.4f | Value std: %.4f | Value loss: %.4f | Advantage mean: %.4f | Advantage std: %.4f | Ratio mean: %.4f | Unclipped ratio mean: %.4f | Clipped percentage: %.2f%% | Mean entropy: %.4f | KL divergence: %.4f\n", reward_sum, loss_ppo, value_mean, value_std, loss_value, advantage_mean, advantage_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, mean_entropy, kl_mean);
     printf("Action distribution: ");
     for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
         printf("Action %d: %.2f%%, ", j, actions[j]);
@@ -249,5 +250,10 @@ int main() {
     optim->epsilon = EPSILON_ADAM;
     optim->t = 0;
 
+    gba_create("../libretro-super/dist/unix/mgba_libretro.so", "rom/pokemon.gba");
+    gba_reset("rom/start.sav");
+
     train(agent, optim, EPOCHS);
+
+    return 0;
 }

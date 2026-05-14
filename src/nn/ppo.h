@@ -5,7 +5,7 @@
 #include "config.h"
 
 struct Trajectory {
-    double states[BATCH_SIZE][INPUT_SIZE];
+    int states[BATCH_SIZE][INPUT_SIZE];
     double hidden_states[BATCH_SIZE][HIDDEN_SIZE];
     double z[BATCH_SIZE][COL_SIZE];    // Concaténation de l'entrée et de l'état caché précédent pour le LSTM (i.e. [x_t; h_{t-1}])
     double f[BATCH_SIZE][HIDDEN_SIZE];
