@@ -7,7 +7,8 @@
 #include "lstm.h"
 #include "adam.h"
 #include "config.h"
-#include "../game/reward.h"
+#include "reward.h"
+#include "libretro_emu.h"
 
 // Initialisation de l'agent
 Agent* init_agent() {
@@ -79,9 +80,13 @@ void agent_forward_t(Agent* agent, double state[INPUT_SIZE], Trajectory* traj, i
 
 void agent_forward(Agent* agent, Trajectory* traj) {
     for (int t=0; t<BATCH_SIZE; t++) {
-        double state[INPUT_SIZE]; // TODO : Récupérer l'état depuis l'émulateur
+        double state[INPUT_SIZE];
+        gba_state(state);
+
         agent_forward_t(agent, state, traj, t);
-        // TODO : Envoyer l'action choisie à l'émulateur
+
+        gba_button(traj->actions[t]);
+        gba_screen("../../screenshots/screen.bmp"); // Attention, gourmand en ressources, à n'utiliser que pour le debug
     }
 }
 
@@ -231,4 +236,18 @@ void train(Agent* agent, Optimizer* optim, int epochs) {
     for (int epoch=0; epoch<epochs; epoch++) {
         train_epoch(agent, optim);
     }
+}
+
+int main() {
+    srand(0);
+
+    Agent* agent = init_agent();
+    Optimizer* optim = malloc(sizeof(Optimizer));
+    optim->lr = LEARNING_RATE;
+    optim->beta1 = BETA1;
+    optim->beta2 = BETA2;
+    optim->epsilon = EPSILON_ADAM;
+    optim->t = 0;
+
+    train(agent, optim, EPOCHS);
 }

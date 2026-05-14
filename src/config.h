@@ -8,10 +8,16 @@
 #define MAX_OUTPUT_SIZE 6
 #define COL_SIZE 74  // INPUT_SIZE + HIDDEN_SIZE
 
+#define EPOCHS 2
 #define BATCH_SIZE 128
 
 #define GAMMA 0.99
 #define LAMBDA 0.95 // pour GAE
 #define EPSILON 0.2
+
+#define LEARNING_RATE 0.001
+#define BETA1 0.9
+#define BETA2 0.999
+#define EPSILON_ADAM 1e-8
 
 #endif

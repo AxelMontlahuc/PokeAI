@@ -476,6 +476,99 @@ void gba_screen(const char* path) {
 	write_bmp(path, g_last_rgb, g_last_w, g_last_h);
 }
 
-void gba_behavior_map(int behavior_out[11][11], int* player_x, int* player_y) {
-    // A compléter
+// Fonction pour déterminer le comportement d'une tile
+static int eval_tile_property(int type, uint16_t tile_id, uint8_t col, int mx, int my, uint32_t ts_primary, uint32_t ts_secondary) {
+    if (type == 0) { // Collision
+        return (col != 0) ? 1 : 0;
+    }
+    
+    if (type == 1) { // Interaction
+        if (tile_id == 655) return 1; // Clock
+        
+        // Check warps
+        uint32_t events = read32(0x0203731C);
+        if (events >= 0x08000000) {
+            uint8_t count = read8(events + 0x01);
+            uint32_t warps = read32(events + 0x08);
+            for (int w = 0; warps >= 0x08000000 && w < count; w++) {
+                if ((int16_t)read16(warps + w * 8) == mx && (int16_t)read16(warps + w * 8 + 2) == my) return 1;
+            }
+        }
+        return 0;
+    }
+    
+    if (type == 2) { // Grass
+        // On utilise le tileset primaire ou secondaire selon l'ID de la tile
+        uint32_t ts = (tile_id < 512) ? ts_primary : ts_secondary;
+        uint32_t attrs = ts ? read32(ts + 0x10) : 0;
+        if (attrs >= 0x08000000) {
+            uint8_t behavior = read16(attrs + ((tile_id % 512) * 2)) & 0xFF;
+            return (behavior == 0x02 || behavior == 0x03) ? 1 : 0;
+        }
+    }
+    
+    return 0;
+}
+
+// Fonction pour générer une map de "comportement" (collision, interaction, herbe) autour du joueur avec des 0 et des 1 seulement
+void gba_behavior_map(int type, int state[INPUT_SIZE], int player_x, int player_y) {
+    uint32_t layout = read32(0x02037318);
+    uint32_t map_w = read32(layout + 0x00);
+    uint32_t map_h = read32(layout + 0x04);
+    uint32_t map_data = read32(layout + 0x0C);
+    uint32_t ts_pri = read32(layout + 0x10);
+    uint32_t ts_sec = read32(layout + 0x14);
+
+    int px = player_x - 7;
+	int py = player_y - 7;
+    
+	// On construit une map 11x11 autour du joueur
+	int behavior_out[11][11] = {0};
+    for (int r = 0; r < 11; r++) {
+        for (int c = 0; c < 11; c++) {
+            int mx = px + (c - 5);
+            int my = py + (r - 5);
+            
+            // Check des limites de la map
+            if (mx < 0 || my < 0 || mx >= map_w || my >= map_h) {
+                behavior_out[r][c] = (type == 0) ? 1 : 0; // Type 0 : collision
+                continue;
+            }
+            
+            uint16_t tile = read16(map_data + (my * map_w + mx) * 2);
+            behavior_out[r][c] = eval_tile_property(type, tile & 0x03FF, (tile >> 10) & 0x03, mx, my, ts_pri, ts_sec);
+        }
+    }
+
+	// Copier le résultat dans l'état
+	for (int i=0; i<121; i++) {
+		state[24 + type*121 + i] = behavior_out[i/11][i%11];
+	}
+}
+
+void gba_state(int state[INPUT_SIZE]) {
+	// Organisation de l'état
+	// 0 - Zone actuelle
+	// 1 - Position x du joueur
+	// 2 - Position y du joueur
+	// 3-20 - Level, HP, max HP des 6 pokémons du joueur
+	// 21-23 - Level, HP, max HP du pokémon adverse
+	// 24 - 144 - Behavior map 11x11 des collisions (1 si la case est solide, 0 sinon)
+	// 145 - 265 - Behavior map 11x11 des interactions (1 si la case a une interaction, 0 sinon)
+	// 266 - 386 - Behavior map 11x11 des hautes herbes (1 si la case est une haute herbe, 0 sinon)
+
+	state[0] = (int)read16(0x020322E4u); // Zone
+	state[1] = (int)read16(0x02037360u); // Player X
+	state[2] = (int)read16(0x02037362u); // Player Y
+
+	const uint32_t bases[7] = { 0x02024540u, 0x020245A4u, 0x02024608u, 0x0202466Cu, 0x020246D0u, 0x02024734u, 0x02024104u };
+	for (int p = 0; p < 7; p++) {
+		state[3 + p*3 + 0] = (int)read8(bases[p]); 		   // Level
+		state[3 + p*3 + 1] = (int)read16(bases[p] + 0x02); // HP
+		state[3 + p*3 + 2] = (int)read16(bases[p] + 0x04); // Max HP
+	}
+
+	gba_behavior_map(0, state, (int)state[1], (int)state[2]); // Collision
+	gba_behavior_map(1, state, (int)state[1], (int)state[2]); // Interaction
+	gba_behavior_map(2, state, (int)state[1], (int)state[2]); // Herbe
 }
