@@ -22,6 +22,25 @@ bool ROUTE_104_FLAG = false;
 bool PETALBURG_WOODS_FLAG = false;
 bool RUSTBORO_FLAG = false;
 
+void reset_flags() {
+    PLAYER_HOUSE_FLAG = false;
+    PLAYER_ROOM_FLAG = false;
+    CLOCK_FLAG = false;
+    LITTLEROOT_FLAG = false;
+    RIVAL_HOUSE_FLAG = false;
+    RIVAL_ROOM_FLAG = false;
+    ROUTE_101_FLAG = false;
+    LABORATORY_FLAG = false;
+    OLDALE_FLAG = false;
+    ROUTE_103_FLAG = false;
+    LABORATORY_2_FLAG = false;
+    ROUTE_102_FLAG = false;
+    PETALBURG_FLAG = false;
+    ROUTE_104_FLAG = false;
+    PETALBURG_WOODS_FLAG = false;
+    RUSTBORO_FLAG = false;
+}
+
 double reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]) {
 	double r = 0;
 

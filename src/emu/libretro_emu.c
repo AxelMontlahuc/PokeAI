@@ -6,6 +6,7 @@
 #include <dlfcn.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -20,6 +21,9 @@ static double g_nominal_fps = 60.0;
 static unsigned long long g_run_count = 0;
 
 static int g_hold[RETRO_DEVICE_ID_JOYPAD_R3+1] = {0};
+static int g_press_hold_frames = 2;
+static int g_press_total_frames = 1;
+static int g_video_enabled = 1;
 
 static uint8_t *g_last_rgb = NULL;
 static unsigned g_last_w = 0, g_last_h = 0;
@@ -27,6 +31,10 @@ static unsigned g_last_w = 0, g_last_h = 0;
 static enum retro_pixel_format g_retro_pixfmt = RETRO_PIXEL_FORMAT_XRGB8888;
 static struct retro_memory_map g_memmap = {0};
 static struct retro_memory_descriptor *g_memmap_desc = NULL;
+
+// When non-zero we suppress libretro/core output (log callback and
+// temporarily redirect stdout/stderr around core-run calls).
+static int g_suppress_core_output = 0;
 
 static unsigned g_joy[RETRO_DEVICE_ID_JOYPAD_R3+1] = { 0 };
 
@@ -78,6 +86,7 @@ static void die(const char *fmt, ...) {
 
 
 static void core_log(enum retro_log_level level, const char *fmt, ...) {
+	if (g_suppress_core_output) return;
 	static const char * levelstr[] = { "dbg", "inf", "wrn", "err" };
 	char buffer[4096] = {0};
 	va_list va;
@@ -183,6 +192,7 @@ static void convert_to_rgb(const void *src_data, unsigned w, unsigned h, size_t 
 
 static void core_video_refresh(const void *data, unsigned width, unsigned height, size_t pitch) {
 	if (!data) return; 
+	if (!g_video_enabled) return;
 	convert_to_rgb(data, width, height, pitch, g_retro_pixfmt);
 }
 
@@ -191,14 +201,15 @@ static void core_input_poll(void) {
 	for (unsigned k=0;k<sizeof(ids)/sizeof(ids[0]);++k) {
 		int id = ids[k];
 		g_joy[id] = (g_hold[id] > 0) ? 1 : 0;
-		if (g_hold[id] > 0) g_hold[id]--;
+		if (g_hold[id] > 0) {
+			g_hold[id]--;
+		}
 	}
 }
 
 static int16_t core_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
 	if (port || index || device != RETRO_DEVICE_JOYPAD)
 		return 0;
-
 	return (int16_t)g_joy[id];
 }
 
@@ -221,6 +232,13 @@ static void core_load(const char *sofile) {
 		die("Failed to load core: %s", dlerror());
 
 	dlerror();
+
+	/* Respect LIBRETRO_SILENT=1 or =true to silence core output by default */
+	const char *silent_env = getenv("LIBRETRO_SILENT");
+	if (silent_env) {
+		if (silent_env[0] == '1' || strcasecmp(silent_env, "true") == 0)
+			g_suppress_core_output = 1;
+	}
 
 	load_retro_sym(retro_init);
 	load_retro_sym(retro_deinit);
@@ -305,6 +323,61 @@ static void core_unload() {
 		dlclose(g_retro.handle);
 }
 
+// Wrapper to call the core's retro_run while optionally silencing
+// its stdout/stderr output. Increments global run counter like callers
+// previously did.
+static void core_run_silent_wrapper(void) {
+	if (!g_retro.retro_run) return;
+	if (!g_suppress_core_output) {
+		g_retro.retro_run();
+		++g_run_count;
+		return;
+	}
+
+	int saved_out = dup(STDOUT_FILENO);
+	int saved_err = dup(STDERR_FILENO);
+	int nullfd = open("/dev/null", O_WRONLY);
+	if (nullfd >= 0) {
+		dup2(nullfd, STDOUT_FILENO);
+		dup2(nullfd, STDERR_FILENO);
+		close(nullfd);
+	}
+
+	g_retro.retro_run();
+
+	fflush(stdout);
+	fflush(stderr);
+
+	if (saved_out >= 0) {
+		dup2(saved_out, STDOUT_FILENO);
+		close(saved_out);
+	}
+	if (saved_err >= 0) {
+		dup2(saved_err, STDERR_FILENO);
+		close(saved_err);
+	}
+
+	++g_run_count;
+}
+
+// Public API to toggle silencing of the core. Also allow enabling via
+// the LIBRETRO_SILENT environment variable when loading a core.
+void gba_set_core_silent(int silent) {
+	g_suppress_core_output = silent ? 1 : 0;
+}
+
+void gba_set_press_timing(int hold_frames, int total_frames) {
+	if (hold_frames < 1) hold_frames = 1;
+	if (total_frames < 1) total_frames = 1;
+	if (total_frames < hold_frames) total_frames = hold_frames;
+	g_press_hold_frames = hold_frames;
+	g_press_total_frames = total_frames;
+}
+
+void gba_set_video_enabled(int enabled) {
+	g_video_enabled = enabled ? 1 : 0;
+}
+
 long gba_ram(uint32_t addr, size_t nbytes) {
 	if (nbytes == 0) return 0;
 	void *sys = g_retro.retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM);
@@ -371,10 +444,9 @@ int gba_button(int button_code) {
 	unsigned id = 5;
 	map_button(button_code, &id);
 
-	g_hold[id] = 2;
-	if (g_retro.retro_run) { 
-		g_retro.retro_run(); 
-		++g_run_count; 
+	g_hold[id] = g_press_hold_frames;
+	for (int i = 0; i < g_press_total_frames; ++i) {
+		core_run_silent_wrapper();
 	}
 
 	return 0;
@@ -401,8 +473,7 @@ int gba_reset(const char* savestate) {
 
 void gba_run(int frames) {
 	for (int i = 0; i < frames; ++i) {
-		g_retro.retro_run();
-		++g_run_count;
+		core_run_silent_wrapper();
 	}
 }
 
@@ -412,11 +483,8 @@ int gba_create(const char* core_so, const char* rom_path) {
 	core_load(core_so);
 	core_load_game(rom_path);
 
-	for (int i = 0; i < 5; ++i) { 
-		if (g_retro.retro_run) { 
-			g_retro.retro_run(); 
-			++g_run_count; 
-		} 
+	for (int i = 0; i < 5; ++i) {
+		core_run_silent_wrapper();
 	}
 
 	return 0;

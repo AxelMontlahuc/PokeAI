@@ -15,5 +15,8 @@ void gba_savestate(const char* save_path);
 void gba_run(int frames);
 void gba_screen(const char* path);
 void gba_state(int state[INPUT_SIZE]);
+void gba_set_core_silent(int silent);
+void gba_set_press_timing(int hold_frames, int total_frames);
+void gba_set_video_enabled(int enabled);
 
 #endif

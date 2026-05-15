@@ -1,7 +1,15 @@
+#define _POSIX_C_SOURCE 200809L // Pour ftruncate
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+
+// Pour la parallélisation
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 
 #include "agent.h"
 #include "ppo.h"
@@ -79,15 +87,39 @@ void agent_forward_t(Agent* agent, int state[INPUT_SIZE], Trajectory* traj, int 
     memcpy(traj->states[t], state, sizeof(int) * INPUT_SIZE);
 }
 
-void agent_forward(Agent* agent, Trajectory* traj) {
-    for (int t=0; t<BATCH_SIZE; t++) {
-        int state[INPUT_SIZE];
-        gba_state(state);
+void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]) {
+    pid_t pids[NUM_ENVS];
 
-        agent_forward_t(agent, state, traj, t);
+    for (int env=0; env<NUM_ENVS; env++) {
+        pid_t pid = fork();
+        if (pid == 0) { // Processus enfant
+            srand((unsigned int)env);
+            // Création d'une instance de l'émulateur nécessaire après le fork (pour avoir des émulateurs différents)
+            gba_set_core_silent(1); 
+            gba_set_press_timing(6, 60);
+            gba_set_video_enabled(0);
+            gba_create("../libretro-super/dist/unix/mgba_libretro.so", "rom/pokemon.gba");
+            gba_reset("rom/start.sav");
 
-        gba_button(traj->actions[t]);
-        gba_screen("../../screenshots/screen.bmp"); // Attention, gourmand en ressources, à n'utiliser que pour le debug
+            for (int t=0; t<BATCH_SIZE; t++) {
+                int state[INPUT_SIZE];
+                gba_state(state);
+
+                agent_forward_t(agent, state, traj[env], t);
+
+                gba_button(traj[env]->actions[t]);
+                // gba_screen("screenshots/screen.bmp"); // Attention, gourmand en ressources, à n'utiliser que pour le debug
+            }
+            gba_destroy();
+            exit(0);
+        } else { // Processus parent
+            pids[env] = pid;
+        }
+    }
+
+    // Attendre la fin de tous les processus enfants
+    for (int env=0; env<NUM_ENVS; env++) {
+        waitpid(pids[env], NULL, 0);
     }
 }
 
@@ -214,7 +246,7 @@ void logging(Trajectory* traj) {
         actions[j] *= 100;
     }
 
-    printf("Reward sum: %.4f | | Loss: %.4f | Value mean: %.4f | Value std: %.4f | Value loss: %.4f | Advantage mean: %.4f | Advantage std: %.4f | Ratio mean: %.4f | Unclipped ratio mean: %.4f | Clipped percentage: %.2f%% | Mean entropy: %.4f | KL divergence: %.4f\n", reward_sum, loss_ppo, value_mean, value_std, loss_value, advantage_mean, advantage_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, mean_entropy, kl_mean);
+    printf("Reward sum: %.4f | Loss: %.4f | Value mean: %.4f | Value std: %.4f | Value loss: %.4f | Advantage mean: %.4f | Advantage std: %.4f | Ratio mean: %.4f | Unclipped ratio mean: %.4f | Clipped percentage: %.2f%% | Mean entropy: %.4f | KL divergence: %.4f\n", reward_sum, loss_ppo, value_mean, value_std, loss_value, advantage_mean, advantage_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, mean_entropy, kl_mean);
     printf("Action distribution: ");
     for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
         printf("Action %d: %.2f%%, ", j, actions[j]);
@@ -223,25 +255,54 @@ void logging(Trajectory* traj) {
 }
 
 void train_epoch(Agent* agent, Optimizer* optim) {
-    Trajectory* traj = malloc(sizeof(Trajectory));
+    Trajectory* traj[NUM_ENVS];
+    for (int env=0; env<NUM_ENVS; env++) {
+        // Allocation de la mémoire partagée (nom unique par worker)
+        char shm_name[64];
+        snprintf(shm_name, sizeof(shm_name), "/worker_%d", env);
+        int shm_fd = shm_open(shm_name, O_CREAT | O_RDWR, 0666);
+        if (shm_fd < 0) {
+            perror("shm_open");
+            exit(1);
+        }
+        if (ftruncate(shm_fd, sizeof(Trajectory)) != 0) {
+            perror("ftruncate");
+            close(shm_fd);
+            exit(1);
+        }
+
+        traj[env] = mmap(NULL, sizeof(Trajectory), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+        if (traj[env] == MAP_FAILED) {
+            perror("mmap");
+            close(shm_fd);
+            exit(1);
+        }
+        close(shm_fd);
+    }
 
     agent_forward(agent, traj);
-    agent_backward(agent, optim, traj);
+    for (int env=0; env<NUM_ENVS; env++) {
+        agent_backward(agent, optim, traj[env]);
+        logging(traj[env]);
+    }
 
-    logging(traj);
-
-    free(traj);
+    // Libération de la mémoire partagée
+    for (int env=0; env<NUM_ENVS; env++) {
+        char shm_name[64];
+        snprintf(shm_name, sizeof(shm_name), "/worker_%d", env);
+        munmap(traj[env], sizeof(Trajectory));
+        shm_unlink(shm_name);
+    }
 }
 
 void train(Agent* agent, Optimizer* optim, int epochs) {
     for (int epoch=0; epoch<epochs; epoch++) {
+        reset_flags();
         train_epoch(agent, optim);
     }
 }
 
 int main() {
-    srand(0);
-
     Agent* agent = init_agent();
     Optimizer* optim = malloc(sizeof(Optimizer));
     optim->lr = LEARNING_RATE;
@@ -249,9 +310,6 @@ int main() {
     optim->beta2 = BETA2;
     optim->epsilon = EPSILON_ADAM;
     optim->t = 0;
-
-    gba_create("../libretro-super/dist/unix/mgba_libretro.so", "rom/pokemon.gba");
-    gba_reset("rom/start.sav");
 
     train(agent, optim, EPOCHS);
 
