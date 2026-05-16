@@ -21,11 +21,11 @@ struct Dense {
 void init_dense(Dense* dense, int input_size, int output_size);
 void dense_forward(Dense* dense, double* input, double* logits);
 void dense_backward(Dense* dense,
-    double input[BATCH_SIZE][HIDDEN_SIZE],
-    double dL_dlogits[BATCH_SIZE][MAX_OUTPUT_SIZE],
+    double input[MINIBATCH_SIZE][HIDDEN_SIZE],
+    double dL_dlogits[MINIBATCH_SIZE][MAX_OUTPUT_SIZE],
     double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE],
     double dL_db[MAX_OUTPUT_SIZE],
-    double dL_dinput[BATCH_SIZE][HIDDEN_SIZE]
+    double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE]
 );
 
 #endif

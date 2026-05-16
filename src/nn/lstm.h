@@ -49,6 +49,6 @@ struct Lstm {
 
 void init_lstm(Lstm* lstm, int input_size, int hidden_size);
 void lstm_forward(Lstm* lstm, Trajectory* traj, int input[INPUT_SIZE], int t);
-void lstm_backward(Lstm* lstm, Trajectory* traj, double dL_dh_v[BATCH_SIZE][HIDDEN_SIZE], double dL_dh_p[BATCH_SIZE][HIDDEN_SIZE], double c_ini[HIDDEN_SIZE], double dL_dwf[HIDDEN_SIZE][COL_SIZE], double dL_dwi[HIDDEN_SIZE][COL_SIZE], double dL_dwc[HIDDEN_SIZE][COL_SIZE], double dL_dwo[HIDDEN_SIZE][COL_SIZE], double dL_dbf[HIDDEN_SIZE], double dL_dbi[HIDDEN_SIZE], double dL_dbc[HIDDEN_SIZE], double dL_dbo[HIDDEN_SIZE]);
+void lstm_backward(Lstm* lstm, Minibatch* minibatch, double dL_dh_v[MINIBATCH_SIZE][HIDDEN_SIZE], double dL_dh_p[MINIBATCH_SIZE][HIDDEN_SIZE], double c_ini[HIDDEN_SIZE], double dL_dwf[HIDDEN_SIZE][COL_SIZE], double dL_dwi[HIDDEN_SIZE][COL_SIZE], double dL_dwc[HIDDEN_SIZE][COL_SIZE], double dL_dwo[HIDDEN_SIZE][COL_SIZE], double dL_dbf[HIDDEN_SIZE], double dL_dbi[HIDDEN_SIZE], double dL_dbc[HIDDEN_SIZE], double dL_dbo[HIDDEN_SIZE]);
 
 #endif

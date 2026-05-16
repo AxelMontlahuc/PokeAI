@@ -78,12 +78,6 @@ void agent_forward_t(Agent* agent, int state[INPUT_SIZE], Trajectory* traj, int 
         traj->done[t] = 0;
     }
 
-    if (t == 0) {
-        traj->rewards[t] = 0;
-    } else {
-        traj->rewards[t] = reward(traj->states[t-1], state);    
-    }
-
     memcpy(traj->states[t], state, sizeof(int) * INPUT_SIZE);
 }
 
@@ -96,20 +90,36 @@ void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]) {
             srand((unsigned int)env);
             // Création d'une instance de l'émulateur nécessaire après le fork (pour avoir des émulateurs différents)
             gba_set_core_silent(1); 
-            gba_set_press_timing(6, 60);
+            gba_set_press_timing(6, 20);
             gba_set_video_enabled(0);
             gba_create("../libretro-super/dist/unix/mgba_libretro.so", "rom/pokemon.gba");
             gba_reset("rom/start.sav");
 
-            for (int t=0; t<BATCH_SIZE; t++) {
+            char screen_path[64];
+            snprintf(screen_path, sizeof(screen_path), "screenshots/screen_%d.bmp", env);
+
+            for (int t=0; t<TRAJ_SIZE; t++) {
                 int state[INPUT_SIZE];
                 gba_state(state);
+
+                if (t > 0) {
+                    traj[env]->rewards[t-1] = reward(traj[env]->states[t-1], state);
+                }
 
                 agent_forward_t(agent, state, traj[env], t);
 
                 gba_button(traj[env]->actions[t]);
-                // gba_screen("screenshots/screen.bmp"); // Attention, gourmand en ressources, à n'utiliser que pour le debug
+                // gba_screen(screen_path); // Attention, gourmand en ressources, à n'utiliser que pour le debug
             }
+
+            int final_state[INPUT_SIZE];
+            gba_state(final_state);
+            traj[env]->rewards[TRAJ_SIZE-1] = reward(traj[env]->states[TRAJ_SIZE-1], final_state);
+
+            double advantages[TRAJ_SIZE];
+            compute_advantages(traj[env]->rewards, traj[env]->values, traj[env]->done, advantages);
+            memcpy(traj[env]->advantages, advantages, TRAJ_SIZE * sizeof(double));
+
             gba_destroy();
             exit(0);
         } else { // Processus parent
@@ -124,34 +134,101 @@ void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]) {
 }
 
 // Rétropropagation pour tout l'agent
-void recompute_probs(Agent* agent, Trajectory* old_traj, double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE]) {
-    for (int t=0; t<BATCH_SIZE; t++) {
-        dense_forward(&agent->policy_head, old_traj->hidden_states[t], agent->policy_logits);
+void recompute_probs(Agent* agent, Minibatch* current_minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE]) {
+    for (int t=0; t<MINIBATCH_SIZE; t++) {
+        dense_forward(&agent->policy_head, current_minibatch->hidden_states[t], agent->policy_logits);
         softmax(agent->policy_logits, agent->policy_head.output_size, new_probs[t]);
     }
 }
 
-void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj) {
+double compute_std(double array[MINIBATCH_SIZE], double mean) {
+    double variance = 0;
+
+    for (int i=0; i<MINIBATCH_SIZE; i++) {
+        double diff = array[i] - mean;
+        variance += diff * diff;
+    }
+    variance /= MINIBATCH_SIZE;
+
+    return sqrt(variance);
+}
+
+void logging(Minibatch* minibatch) {
+    double loss_ppo = minibatch->ppo_loss;
+    double loss_value = minibatch->value_loss;
+    double reward_sum = 0;
+    double value_mean = 0;
+    double value_std = 0;
+    double advantage_mean = 0;
+    double advantage_std = 0;
+    double ratio_mean = 0;
+    double unclipped_ratio_mean = 0;
+    double clipped_percentage = 0;
+    double mean_entropy = 0;
+    double kl_mean = 0;
+    double actions[POLICY_OUTPUT_SIZE] = {0};
+
+    for (int t=0; t<MINIBATCH_SIZE; t++) {
+        reward_sum += minibatch->rewards[t];
+        value_mean += minibatch->values[t];
+        advantage_mean += minibatch->advantages[t];
+        ratio_mean += minibatch->ratios[t];
+        unclipped_ratio_mean += minibatch->unclipped_ratios[t];
+        clipped_percentage += minibatch->clipped[t];
+
+        double current_entropy = 0;
+        for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
+            current_entropy -= minibatch->probs[t][j] * log(minibatch->probs[t][j] + 1e-10); // On évite log(0)
+        }
+        mean_entropy += current_entropy;
+        kl_mean += minibatch->kl[t];
+        actions[minibatch->actions[t]] += 1;
+    }
+
+    value_mean /= MINIBATCH_SIZE;
+    advantage_mean /= MINIBATCH_SIZE;
+    value_std = compute_std(minibatch->values, value_mean);
+    advantage_std = compute_std(minibatch->advantages, advantage_mean);
+    ratio_mean /= MINIBATCH_SIZE;
+    unclipped_ratio_mean /= MINIBATCH_SIZE;
+    clipped_percentage /= MINIBATCH_SIZE;
+    clipped_percentage *= 100;
+    kl_mean /= MINIBATCH_SIZE;
+    mean_entropy /= MINIBATCH_SIZE;
+
+    for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
+        actions[j] /= MINIBATCH_SIZE;
+        actions[j] *= 100;
+    }
+
+    printf("Reward sum: %.4f | Loss: %.4f | Value mean: %.4f | Value std: %.4f | Value loss: %.4f | Advantage mean: %.4f | Advantage std: %.4f | Ratio mean: %.4f | Unclipped ratio mean: %.4f | Clipped percentage: %.2f%% | Mean entropy: %.4f | KL divergence: %.4f\n", reward_sum, loss_ppo, value_mean, value_std, loss_value, advantage_mean, advantage_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, mean_entropy, kl_mean);
+    printf("Action distribution: ");
+    for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
+        printf("Action %d: %.2f%%, ", j, actions[j]);
+    }
+    printf("\n\n");
+}
+
+void agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibatch) {
     // Rétropropagation de la value head/critic
-    double returns[BATCH_SIZE];
-    compute_advantages(traj->rewards, traj->values, traj->done, returns);
-    for (int t=0; t<BATCH_SIZE; t++) {
-        returns[t] += traj->values[t]; // R_t = A_t + V_t (les returns correspondent aux récompenses sur le long terme, c'est-à-dire la somme pondérées des récompenses futures)
+    double returns[MINIBATCH_SIZE];
+    for (int t=0; t<MINIBATCH_SIZE; t++) {
+        returns[t] = minibatch->advantages[t] + minibatch->values[t]; // R_t = A_t + V_t (les returns correspondent aux récompenses sur le long terme, c'est-à-dire la somme pondérées des récompenses futures)
     }
 
     double dL_dw_v[MAX_OUTPUT_SIZE][HIDDEN_SIZE] = {0};
     double dL_db_v[MAX_OUTPUT_SIZE] = {0};
-    double dL_dinput_v[BATCH_SIZE][HIDDEN_SIZE] = {0};
-    traj->value_loss = value_backward(&agent->value_head, traj->values, returns, traj->hidden_states, dL_dw_v, dL_db_v, dL_dinput_v);
+    double dL_dinput_v[MINIBATCH_SIZE][HIDDEN_SIZE] = {0};
+    minibatch->value_loss = value_backward(&agent->value_head, minibatch->values, returns, minibatch->hidden_states, dL_dw_v, dL_db_v, dL_dinput_v);
 
     // Rétropropagation de la policy head/actor
-    double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE];
-    recompute_probs(agent, traj, new_probs);
+    double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE];
+    recompute_probs(agent, minibatch, new_probs);
 
     double dL_dw_p[MAX_OUTPUT_SIZE][HIDDEN_SIZE] = {0};
     double dL_db_p[MAX_OUTPUT_SIZE] = {0};
-    double dL_dinput_p[BATCH_SIZE][HIDDEN_SIZE] = {0};
-    policy_backward(&agent->policy_head, traj, new_probs, dL_dw_p, dL_db_p, dL_dinput_p);
+    double dL_dinput_p[MINIBATCH_SIZE][HIDDEN_SIZE] = {0};
+    policy_backward(&agent->policy_head, minibatch, new_probs, dL_dw_p, dL_db_p, dL_dinput_p);
 
     // Rétropropagation à travers le LSTM
     double dL_dwf[HIDDEN_SIZE][COL_SIZE] = {0};
@@ -164,7 +241,7 @@ void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj) {
     double dL_dbo[HIDDEN_SIZE] = {0};
 
     double c_ini[HIDDEN_SIZE] = {0}; // On suppose que la mémoire à long terme est initialisée à zéro au début de chaque trajectoire pour l'instant, mais il faudra à terme le stocker et le faire passer d'une trajectoire à l'autre
-    lstm_backward(&agent->lstm, traj, dL_dinput_v, dL_dinput_p, c_ini, dL_dwf, dL_dwi, dL_dwc, dL_dwo, dL_dbf, dL_dbi, dL_dbc, dL_dbo);
+    lstm_backward(&agent->lstm, minibatch, dL_dinput_v, dL_dinput_p, c_ini, dL_dwf, dL_dwi, dL_dwc, dL_dwo, dL_dbf, dL_dbi, dL_dbc, dL_dbo);
 
     // Mise à jour des poids avec Adam
     optim->t += 1;
@@ -184,74 +261,58 @@ void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj) {
     optimizer_step_vector_2(optim, agent->lstm.bi, agent->lstm.bi_m, agent->lstm.bi_v, dL_dbi, HIDDEN_SIZE);
     optimizer_step_vector_2(optim, agent->lstm.bc, agent->lstm.bc_m, agent->lstm.bc_v, dL_dbc, HIDDEN_SIZE);
     optimizer_step_vector_2(optim, agent->lstm.bo, agent->lstm.bo_m, agent->lstm.bo_v, dL_dbo, HIDDEN_SIZE);
+
+    logging(minibatch);
 }
 
-double compute_std(double array[BATCH_SIZE], double mean) {
-    double variance = 0;
+void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS]) {
+    int num_minibatches = BATCH_SIZE / MINIBATCH_SIZE;
+    Minibatch* minibatches[num_minibatches];
 
-    for (int i=0; i<BATCH_SIZE; i++) {
-        double diff = array[i] - mean;
-        variance += diff * diff;
-    }
-    variance /= BATCH_SIZE;
-
-    return sqrt(variance);
-}
-
-void logging(Trajectory* traj) {
-    double loss_ppo = traj->ppo_loss;
-    double loss_value = traj->value_loss;
-    double reward_sum = 0;
-    double value_mean = 0;
-    double value_std = 0;
-    double advantage_mean = 0;
-    double advantage_std = 0;
-    double ratio_mean = 0;
-    double unclipped_ratio_mean = 0;
-    double clipped_percentage = 0;
-    double mean_entropy = 0;
-    double kl_mean = 0;
-    double actions[POLICY_OUTPUT_SIZE] = {0};
-
-    for (int t=0; t<BATCH_SIZE; t++) {
-        reward_sum += traj->rewards[t];
-        value_mean += traj->values[t];
-        advantage_mean += traj->advantages[t];
-        ratio_mean += traj->ratios[t];
-        unclipped_ratio_mean += traj->unclipped_ratios[t];
-        clipped_percentage += traj->clipped[t];
-
-        double current_entropy = 0;
-        for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
-            current_entropy -= traj->probs[t][j] * log(traj->probs[t][j] + 1e-10); // On évite log(0)
-        }
-        mean_entropy += current_entropy;
-        kl_mean += traj->kl[t];
-        actions[traj->actions[t]] += 1;
+    // Création et mélange des minibatchs
+    int idx[num_minibatches];
+    for (int i=0; i<num_minibatches; i++) {
+        idx[i] = i;
     }
 
-    value_mean /= BATCH_SIZE;
-    advantage_mean /= BATCH_SIZE;
-    value_std = compute_std(traj->values, value_mean);
-    advantage_std = compute_std(traj->advantages, advantage_mean);
-    ratio_mean /= BATCH_SIZE;
-    unclipped_ratio_mean /= BATCH_SIZE;
-    clipped_percentage /= BATCH_SIZE;
-    clipped_percentage *= 100;
-    kl_mean /= BATCH_SIZE;
-    mean_entropy /= BATCH_SIZE;
-
-    for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
-        actions[j] /= BATCH_SIZE;
-        actions[j] *= 100;
+    for (int i=0; i<num_minibatches; i++) {
+        int j = i + rand() / (RAND_MAX / (num_minibatches - i) + 1);
+        int t = idx[j];
+        idx[j] = idx[i];
+        idx[i] = t;
     }
 
-    printf("Reward sum: %.4f | Loss: %.4f | Value mean: %.4f | Value std: %.4f | Value loss: %.4f | Advantage mean: %.4f | Advantage std: %.4f | Ratio mean: %.4f | Unclipped ratio mean: %.4f | Clipped percentage: %.2f%% | Mean entropy: %.4f | KL divergence: %.4f\n", reward_sum, loss_ppo, value_mean, value_std, loss_value, advantage_mean, advantage_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, mean_entropy, kl_mean);
-    printf("Action distribution: ");
-    for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
-        printf("Action %d: %.2f%%, ", j, actions[j]);
+    for (int i=0; i<num_minibatches; i++) {
+        int num_traj = idx[i] / (TRAJ_SIZE / MINIBATCH_SIZE);
+        int num_traj_minibatch = idx[i] % (TRAJ_SIZE / MINIBATCH_SIZE);
+        int start = num_traj_minibatch * MINIBATCH_SIZE;
+
+        minibatches[i] = malloc(sizeof(Minibatch));
+        memcpy(minibatches[i]->states, &traj[num_traj]->states[start], sizeof(minibatches[i]->states));
+        memcpy(minibatches[i]->hidden_states, &traj[num_traj]->hidden_states[start], sizeof(minibatches[i]->hidden_states));
+        memcpy(minibatches[i]->z, &traj[num_traj]->z[start], sizeof(minibatches[i]->z));
+        memcpy(minibatches[i]->f, &traj[num_traj]->f[start], sizeof(minibatches[i]->f));
+        memcpy(minibatches[i]->i, &traj[num_traj]->i[start], sizeof(minibatches[i]->i));
+        memcpy(minibatches[i]->g, &traj[num_traj]->g[start], sizeof(minibatches[i]->g));
+        memcpy(minibatches[i]->o, &traj[num_traj]->o[start], sizeof(minibatches[i]->o));
+        memcpy(minibatches[i]->c, &traj[num_traj]->c[start], sizeof(minibatches[i]->c));
+        memcpy(minibatches[i]->actions, &traj[num_traj]->actions[start], sizeof(minibatches[i]->actions));
+        memcpy(minibatches[i]->rewards, &traj[num_traj]->rewards[start], sizeof(minibatches[i]->rewards));
+        memcpy(minibatches[i]->probs, &traj[num_traj]->probs[start], sizeof(minibatches[i]->probs));
+        memcpy(minibatches[i]->values, &traj[num_traj]->values[start], sizeof(minibatches[i]->values));
+        memcpy(minibatches[i]->advantages, &traj[num_traj]->advantages[start], sizeof(minibatches[i]->advantages));
+        memcpy(minibatches[i]->done, &traj[num_traj]->done[start], sizeof(minibatches[i]->done));
     }
-    printf("\n\n");
+
+    // Rétropropagation
+    for (int i=0; i<num_minibatches; i++) {
+        agent_backward_minibatch(agent, optim, minibatches[i]);
+    }
+
+    // Libération de la mémoire
+    for (int i=0; i<num_minibatches; i++) {
+        free(minibatches[i]);
+    }
 }
 
 void train_epoch(Agent* agent, Optimizer* optim) {
@@ -260,7 +321,12 @@ void train_epoch(Agent* agent, Optimizer* optim) {
         // Allocation de la mémoire partagée (nom unique par worker)
         char shm_name[64];
         snprintf(shm_name, sizeof(shm_name), "/worker_%d", env);
-        int shm_fd = shm_open(shm_name, O_CREAT | O_RDWR, 0666);
+        
+        // Nettoie d'éventuelles mémoires partagées résiduelles de runs précédents
+        shm_unlink(shm_name);
+        
+        // Crée une mémoire partagée neuve
+        int shm_fd = shm_open(shm_name, O_CREAT | O_EXCL | O_RDWR, 0666);
         if (shm_fd < 0) {
             perror("shm_open");
             exit(1);
@@ -268,6 +334,7 @@ void train_epoch(Agent* agent, Optimizer* optim) {
         if (ftruncate(shm_fd, sizeof(Trajectory)) != 0) {
             perror("ftruncate");
             close(shm_fd);
+            shm_unlink(shm_name);
             exit(1);
         }
 
@@ -275,15 +342,17 @@ void train_epoch(Agent* agent, Optimizer* optim) {
         if (traj[env] == MAP_FAILED) {
             perror("mmap");
             close(shm_fd);
+            shm_unlink(shm_name);
             exit(1);
         }
         close(shm_fd);
     }
 
     agent_forward(agent, traj);
-    for (int env=0; env<NUM_ENVS; env++) {
-        agent_backward(agent, optim, traj[env]);
-        logging(traj[env]);
+
+    for (int ppo_epoch=0; ppo_epoch<PPO_EPOCHS; ppo_epoch++) {
+        printf("PPO Epoch %d/%d\n", ppo_epoch+1, PPO_EPOCHS);
+        agent_backward(agent, optim, traj);
     }
 
     // Libération de la mémoire partagée
@@ -298,6 +367,7 @@ void train_epoch(Agent* agent, Optimizer* optim) {
 void train(Agent* agent, Optimizer* optim, int epochs) {
     for (int epoch=0; epoch<epochs; epoch++) {
         reset_flags();
+        printf("\n========== Epoch %d/%d ==========\n", epoch+1, epochs);
         train_epoch(agent, optim);
     }
 }

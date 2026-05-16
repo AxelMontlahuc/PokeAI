@@ -248,15 +248,15 @@ void lstm_forward(Lstm* lstm, Trajectory* traj, int input[INPUT_SIZE], int t) {
 }
 
 // Rétropropagation
-void lstm_backward(Lstm* lstm, Trajectory* traj, double dL_dh_v[BATCH_SIZE][HIDDEN_SIZE], double dL_dh_p[BATCH_SIZE][HIDDEN_SIZE], double c_ini[HIDDEN_SIZE], double dL_dwf[HIDDEN_SIZE][COL_SIZE], double dL_dwi[HIDDEN_SIZE][COL_SIZE], double dL_dwc[HIDDEN_SIZE][COL_SIZE], double dL_dwo[HIDDEN_SIZE][COL_SIZE], double dL_dbf[HIDDEN_SIZE], double dL_dbi[HIDDEN_SIZE], double dL_dbc[HIDDEN_SIZE], double dL_dbo[HIDDEN_SIZE]) {
-    double dL_dh[BATCH_SIZE][HIDDEN_SIZE] = {0};
-    double dL_do[BATCH_SIZE][HIDDEN_SIZE];
-    double dL_dc[BATCH_SIZE][HIDDEN_SIZE];
-    double dL_df[BATCH_SIZE][HIDDEN_SIZE];
-    double dL_di[BATCH_SIZE][HIDDEN_SIZE];
-    double dL_dg[BATCH_SIZE][HIDDEN_SIZE];
+void lstm_backward(Lstm* lstm, Minibatch* minibatch, double dL_dh_v[MINIBATCH_SIZE][HIDDEN_SIZE], double dL_dh_p[MINIBATCH_SIZE][HIDDEN_SIZE], double c_ini[HIDDEN_SIZE], double dL_dwf[HIDDEN_SIZE][COL_SIZE], double dL_dwi[HIDDEN_SIZE][COL_SIZE], double dL_dwc[HIDDEN_SIZE][COL_SIZE], double dL_dwo[HIDDEN_SIZE][COL_SIZE], double dL_dbf[HIDDEN_SIZE], double dL_dbi[HIDDEN_SIZE], double dL_dbc[HIDDEN_SIZE], double dL_dbo[HIDDEN_SIZE]) {
+    double dL_dh[MINIBATCH_SIZE][HIDDEN_SIZE] = {0};
+    double dL_do[MINIBATCH_SIZE][HIDDEN_SIZE];
+    double dL_dc[MINIBATCH_SIZE][HIDDEN_SIZE];
+    double dL_df[MINIBATCH_SIZE][HIDDEN_SIZE];
+    double dL_di[MINIBATCH_SIZE][HIDDEN_SIZE];
+    double dL_dg[MINIBATCH_SIZE][HIDDEN_SIZE];
 
-    for (int t=BATCH_SIZE-1; t>=0; t--) {
+    for (int t=MINIBATCH_SIZE-1; t>=0; t--) {
         //dL/dh = dL/dh_value_head + dL/dh_policy_head
         for (int j=0; j<HIDDEN_SIZE; j++) {
             dL_dh[t][j] += dL_dh_v[t][j] + dL_dh_p[t][j];
@@ -264,29 +264,29 @@ void lstm_backward(Lstm* lstm, Trajectory* traj, double dL_dh_v[BATCH_SIZE][HIDD
 
         // dL_do = dL/dh * tanh(c) (où * est le produit de Hadamard)
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            dL_do[t][j] = dL_dh[t][j] * tanh(traj->c[t][j]);
+            dL_do[t][j] = dL_dh[t][j] * tanh(minibatch->c[t][j]);
         }
 
         // dL_dc = dL/dh * o * (1 - tanh(c)^2) + dL_dc_next
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            double dL_dc_next = (t == BATCH_SIZE-1) ? 0.0 : dL_dc[t+1][j] * traj->f[t+1][j];
-            dL_dc[t][j] = dL_dh[t][j] * traj->o[t][j] * (1 - tanh(traj->c[t][j]) * tanh(traj->c[t][j])) + dL_dc_next;
+            double dL_dc_next = (t == MINIBATCH_SIZE-1) ? 0.0 : dL_dc[t+1][j] * minibatch->f[t+1][j];
+            dL_dc[t][j] = dL_dh[t][j] * minibatch->o[t][j] * (1 - tanh(minibatch->c[t][j]) * tanh(minibatch->c[t][j])) + dL_dc_next;
         }
 
         // dL_df = dc * c_prev (où * est le produit de Hadamard)
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            double c_prev = (t == 0) ? c_ini[j] : traj->c[t-1][j];
+            double c_prev = (t == 0) ? c_ini[j] : minibatch->c[t-1][j];
             dL_df[t][j] = dL_dc[t][j] * c_prev;
         }
 
         // dL_di = dc * g (où * est le produit de Hadamard)
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            dL_di[t][j] = dL_dc[t][j] * traj->g[t][j];
+            dL_di[t][j] = dL_dc[t][j] * minibatch->g[t][j];
         }
 
         // dL_dg = dc * i (où * est le produit de Hadamard)
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            dL_dg[t][j] = dL_dc[t][j] * traj->i[t][j];
+            dL_dg[t][j] = dL_dc[t][j] * minibatch->i[t][j];
         }
 
         // Dérivation à travers les fonctions d'activation (sigmoïde et tanh)
@@ -294,19 +294,19 @@ void lstm_backward(Lstm* lstm, Trajectory* traj, double dL_dh_v[BATCH_SIZE][HIDD
         // dL/d(f pré-activation) = dL/df * f * (1 - f) (car f = sigmoid(f pré-activation)) (idem pour i et o) où * est le produit de Hadamard
         // dL_d(g pré-activation) = dL/dg * (1 - g^2) (car g = tanh(g pré-activation)) où * est le produit de Hadamard
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            dL_df[t][j] = dL_df[t][j] * traj->f[t][j] * (1 - traj->f[t][j]);
-            dL_di[t][j] = dL_di[t][j] * traj->i[t][j] * (1 - traj->i[t][j]);
-            dL_dg[t][j] = dL_dg[t][j] * (1 - traj->g[t][j] * traj->g[t][j]);
-            dL_do[t][j] = dL_do[t][j] * traj->o[t][j] * (1 - traj->o[t][j]);
+            dL_df[t][j] = dL_df[t][j] * minibatch->f[t][j] * (1 - minibatch->f[t][j]);
+            dL_di[t][j] = dL_di[t][j] * minibatch->i[t][j] * (1 - minibatch->i[t][j]);
+            dL_dg[t][j] = dL_dg[t][j] * (1 - minibatch->g[t][j] * minibatch->g[t][j]);
+            dL_do[t][j] = dL_do[t][j] * minibatch->o[t][j] * (1 - minibatch->o[t][j]);
         }
 
         // Gradients pour les poids et les biais : dL/dw = dL/dporte * z et dL/db = dL/dporte (où porte est f, i, g ou o)
         for (int j=0; j<HIDDEN_SIZE; j++) {
             for (int k=0; k<COL_SIZE; k++) {
-                dL_dwf[j][k] += dL_df[t][j] * traj->z[t][k];
-                dL_dwi[j][k] += dL_di[t][j] * traj->z[t][k];
-                dL_dwc[j][k] += dL_dg[t][j] * traj->z[t][k];
-                dL_dwo[j][k] += dL_do[t][j] * traj->z[t][k];
+                dL_dwf[j][k] += dL_df[t][j] * minibatch->z[t][k];
+                dL_dwi[j][k] += dL_di[t][j] * minibatch->z[t][k];
+                dL_dwc[j][k] += dL_dg[t][j] * minibatch->z[t][k];
+                dL_dwo[j][k] += dL_do[t][j] * minibatch->z[t][k];
             }
 
             dL_dbf[j] += dL_df[t][j];

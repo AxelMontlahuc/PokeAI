@@ -50,16 +50,16 @@ void dense_forward(Dense* dense, double* input, double* logits) {
 }
 
 // Rétropropagation
-void dense_backward(Dense* dense, double input[BATCH_SIZE][HIDDEN_SIZE], double dL_dlogits[BATCH_SIZE][MAX_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[BATCH_SIZE][HIDDEN_SIZE]) {
+void dense_backward(Dense* dense, double input[MINIBATCH_SIZE][HIDDEN_SIZE], double dL_dlogits[MINIBATCH_SIZE][MAX_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE]) {
     // Gradients pour les poids
     for (int i=0; i<dense->output_size; i++) {
         for (int j=0; j<dense->input_size; j++) {
             // Calcul du gradient moyen sur le batch
             double grad = 0;
-            for (int k=0; k<BATCH_SIZE; k++) {
+            for (int k=0; k<MINIBATCH_SIZE; k++) {
                 grad += dL_dlogits[k][i] * input[k][j];
             }
-            grad /= BATCH_SIZE; // Moyenne sur le batch
+            grad /= MINIBATCH_SIZE; // Moyenne sur le batch
 
             dL_dw[i][j] = grad;
         }
@@ -68,14 +68,14 @@ void dense_backward(Dense* dense, double input[BATCH_SIZE][HIDDEN_SIZE], double 
     // Gradients pour les biais
     for (int i=0; i<dense->output_size; i++) {
         double grad = 0;
-        for (int k=0; k<BATCH_SIZE; k++) {
+        for (int k=0; k<MINIBATCH_SIZE; k++) {
             grad += dL_dlogits[k][i];
         }
-        dL_db[i] = grad / BATCH_SIZE;
+        dL_db[i] = grad / MINIBATCH_SIZE;
     }
 
     // Gradients pour l'entrée (nécessaire pour la rétropropagation dans les couches précédentes)
-    for (int k=0; k<BATCH_SIZE; k++) {
+    for (int k=0; k<MINIBATCH_SIZE; k++) {
         for (int j=0; j<dense->input_size; j++) {
             dL_dinput[k][j] = 0.0;
         }

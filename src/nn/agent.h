@@ -22,8 +22,8 @@ Agent* init_agent();
 int action_choice(double probs[POLICY_OUTPUT_SIZE]);
 void agent_forward_t(Agent* agent, int state[INPUT_SIZE], Trajectory* traj, int t);
 void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]);
-void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj);
-void recompute_probs(Agent* agent, Trajectory* old_traj, double new_probs[BATCH_SIZE][POLICY_OUTPUT_SIZE]);
+void agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibatch);
+void recompute_probs(Agent* agent, Minibatch* current_minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE]);
 void train_epoch(Agent* agent, Optimizer* optim);
 void train(Agent* agent, Optimizer* optim, int epochs);
 
