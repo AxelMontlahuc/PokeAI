@@ -31,10 +31,16 @@ static unsigned g_last_w = 0, g_last_h = 0;
 static enum retro_pixel_format g_retro_pixfmt = RETRO_PIXEL_FORMAT_XRGB8888;
 static struct retro_memory_map g_memmap = {0};
 static struct retro_memory_descriptor *g_memmap_desc = NULL;
+static const uint8_t *g_sysram = NULL;
+static size_t g_sysram_size = 0;
 
 // When non-zero we suppress libretro/core output (log callback and
 // temporarily redirect stdout/stderr around core-run calls).
 static int g_suppress_core_output = 0;
+static int g_core_stdout_saved = -1;
+static int g_core_stderr_saved = -1;
+static int g_core_null_fd = -1;
+static int g_core_output_redirected = 0;
 
 static unsigned g_joy[RETRO_DEVICE_ID_JOYPAD_R3+1] = { 0 };
 
@@ -47,6 +53,8 @@ static unsigned g_joy[RETRO_DEVICE_ID_JOYPAD_R3+1] = { 0 };
 static void core_load(const char *sofile);
 static void core_load_game(const char *filename);
 static void core_unload(void);
+static void core_apply_output_state(void);
+static void refresh_memory_cache(void);
 
 static struct {
 	void *handle;
@@ -269,6 +277,7 @@ static void core_load(const char *sofile) {
 	set_input_state(core_input_state);
 	set_audio_sample(core_audio_sample);
 	set_audio_sample_batch(core_audio_sample_batch);
+	core_apply_output_state();
 
 	g_retro.retro_init();
 	g_retro.initialized = true;
@@ -319,8 +328,139 @@ static void core_unload() {
 	if (g_retro.initialized)
 		g_retro.retro_deinit();
 
+	if (g_core_output_redirected) {
+		fflush(stdout);
+		fflush(stderr);
+		if (g_core_stdout_saved >= 0) {
+			dup2(g_core_stdout_saved, STDOUT_FILENO);
+			close(g_core_stdout_saved);
+		}
+		if (g_core_stderr_saved >= 0) {
+			dup2(g_core_stderr_saved, STDERR_FILENO);
+			close(g_core_stderr_saved);
+		}
+		if (g_core_null_fd >= 0) {
+			close(g_core_null_fd);
+		}
+		g_core_stdout_saved = -1;
+		g_core_stderr_saved = -1;
+		g_core_null_fd = -1;
+		g_core_output_redirected = 0;
+	}
+
 	if (g_retro.handle)
 		dlclose(g_retro.handle);
+}
+
+static void core_apply_output_state(void) {
+	if (g_suppress_core_output && !g_core_output_redirected) {
+		fflush(stdout);
+		fflush(stderr);
+		g_core_stdout_saved = dup(STDOUT_FILENO);
+		g_core_stderr_saved = dup(STDERR_FILENO);
+		g_core_null_fd = open("/dev/null", O_WRONLY);
+		if (g_core_null_fd >= 0) {
+			dup2(g_core_null_fd, STDOUT_FILENO);
+			dup2(g_core_null_fd, STDERR_FILENO);
+		}
+		g_core_output_redirected = 1;
+	} else if (!g_suppress_core_output && g_core_output_redirected) {
+		fflush(stdout);
+		fflush(stderr);
+		if (g_core_stdout_saved >= 0) {
+			dup2(g_core_stdout_saved, STDOUT_FILENO);
+			close(g_core_stdout_saved);
+		}
+		if (g_core_stderr_saved >= 0) {
+			dup2(g_core_stderr_saved, STDERR_FILENO);
+			close(g_core_stderr_saved);
+		}
+		if (g_core_null_fd >= 0) {
+			close(g_core_null_fd);
+		}
+		g_core_stdout_saved = -1;
+		g_core_stderr_saved = -1;
+		g_core_null_fd = -1;
+		g_core_output_redirected = 0;
+	}
+}
+
+static void refresh_memory_cache(void) {
+	g_sysram = (const uint8_t *)g_retro.retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM);
+	g_sysram_size = g_retro.retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+}
+
+static inline int sysram_read_offset(uint32_t addr, size_t nbytes, size_t *offset) {
+	const uint32_t bases[2] = { 0x02000000u, 0x03000000u };
+	for (int b = 0; b < 2; ++b) {
+		uint32_t base = bases[b];
+		if (addr >= base) {
+			size_t off = (size_t)(addr - base);
+			if (off + nbytes <= g_sysram_size) {
+				*offset = off;
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+static inline uint8_t fast_read8(uint32_t addr, int *ok) {
+	size_t off = 0;
+	if (g_sysram && g_sysram_size && sysram_read_offset(addr, 1, &off)) {
+		if (ok) *ok = 1;
+		return g_sysram[off];
+	}
+	if (ok) *ok = 0;
+	return 0;
+}
+
+static inline uint16_t fast_read16(uint32_t addr, int *ok) {
+	size_t off = 0;
+	if (g_sysram && g_sysram_size && sysram_read_offset(addr, 2, &off)) {
+		uint16_t value;
+		memcpy(&value, g_sysram + off, sizeof(value));
+		if (ok) *ok = 1;
+		return value;
+	}
+	if (ok) *ok = 0;
+	return 0;
+}
+
+static inline uint32_t fast_read32(uint32_t addr, int *ok) {
+	size_t off = 0;
+	if (g_sysram && g_sysram_size && sysram_read_offset(addr, 4, &off)) {
+		uint32_t value;
+		memcpy(&value, g_sysram + off, sizeof(value));
+		if (ok) *ok = 1;
+		return value;
+	}
+	if (ok) *ok = 0;
+	return 0;
+}
+
+static inline uint8_t read8(uint32_t addr) {
+	int ok = 0;
+	uint8_t value = fast_read8(addr, &ok);
+	if (ok) return value;
+	long v = gba_ram(addr, 1);
+	return (v < 0) ? 0 : (uint8_t)(v & 0xFF);
+}
+
+static inline uint16_t read16(uint32_t addr) {
+	int ok = 0;
+	uint16_t value = fast_read16(addr, &ok);
+	if (ok) return value;
+	long v = gba_ram(addr, 2);
+	return (v < 0) ? 0 : (uint16_t)(v & 0xFFFF);
+}
+
+static inline uint32_t read32(uint32_t addr) {
+	int ok = 0;
+	uint32_t value = fast_read32(addr, &ok);
+	if (ok) return value;
+	long v = gba_ram(addr, 4);
+	return (v < 0) ? 0 : (uint32_t)(v & 0xFFFFFFFF);
 }
 
 // Wrapper to call the core's retro_run while optionally silencing
@@ -328,34 +468,8 @@ static void core_unload() {
 // previously did.
 static void core_run_silent_wrapper(void) {
 	if (!g_retro.retro_run) return;
-	if (!g_suppress_core_output) {
-		g_retro.retro_run();
-		++g_run_count;
-		return;
-	}
-
-	int saved_out = dup(STDOUT_FILENO);
-	int saved_err = dup(STDERR_FILENO);
-	int nullfd = open("/dev/null", O_WRONLY);
-	if (nullfd >= 0) {
-		dup2(nullfd, STDOUT_FILENO);
-		dup2(nullfd, STDERR_FILENO);
-		close(nullfd);
-	}
 
 	g_retro.retro_run();
-
-	fflush(stdout);
-	fflush(stderr);
-
-	if (saved_out >= 0) {
-		dup2(saved_out, STDOUT_FILENO);
-		close(saved_out);
-	}
-	if (saved_err >= 0) {
-		dup2(saved_err, STDERR_FILENO);
-		close(saved_err);
-	}
 
 	++g_run_count;
 }
@@ -364,6 +478,7 @@ static void core_run_silent_wrapper(void) {
 // the LIBRETRO_SILENT environment variable when loading a core.
 void gba_set_core_silent(int silent) {
 	g_suppress_core_output = silent ? 1 : 0;
+	core_apply_output_state();
 }
 
 void gba_set_press_timing(int hold_frames, int total_frames) {
@@ -380,16 +495,17 @@ void gba_set_video_enabled(int enabled) {
 
 long gba_ram(uint32_t addr, size_t nbytes) {
 	if (nbytes == 0) return 0;
-	void *sys = g_retro.retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM);
-	size_t sz = g_retro.retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
-	if (!sys || sz == 0) return -1;
-	const uint8_t *base = (const uint8_t*)sys;
+	if (!g_sysram || g_sysram_size == 0) {
+		refresh_memory_cache();
+	}
+	if (!g_sysram || g_sysram_size == 0) return -1;
+	const uint8_t *base = g_sysram;
 	const uint32_t bases[2] = { 0x02000000u, 0x03000000u };
 	for (int b = 0; b < 2; ++b) {
 		uint32_t A = bases[b];
 		if (addr >= A) {
 			size_t off = (size_t)(addr - A);
-			if (off + nbytes <= sz) {
+			if (off + nbytes <= g_sysram_size) {
 				unsigned long val = 0; const uint8_t *p = base + off;
 				for (size_t i = 0; i < nbytes; ++i) val |= ((unsigned long)p[i]) << (8*i);
 				return (long)val;
@@ -412,19 +528,6 @@ long gba_ram(uint32_t addr, size_t nbytes) {
 		}
 	}
 	return -2;
-}
-
-static inline uint8_t read8(uint32_t addr) {
-	long v = gba_ram(addr, 1);
-	return (v < 0) ? 0 : (uint8_t)(v & 0xFF);
-}
-static inline uint16_t read16(uint32_t addr) {
-	long v = gba_ram(addr, 2);
-	return (v < 0) ? 0 : (uint16_t)(v & 0xFFFF);
-}
-static inline uint32_t read32(uint32_t addr) {
-	long v = gba_ram(addr, 4);
-	return (v < 0) ? 0 : (uint32_t)(v & 0xFFFFFFFF);
 }
 
 static inline int map_button(int button_code, unsigned *out_id) {
@@ -465,6 +568,7 @@ int gba_reset(const char* savestate) {
 
 	if (!g_retro.retro_unserialize(saveblob, rdb))
 		die("Failed to load savestate, core returned error");
+	refresh_memory_cache();
 	fclose(fd);
 	free(saveblob);
 
@@ -548,7 +652,7 @@ void gba_screen(const char* path) {
 }
 
 // Fonction pour déterminer le comportement d'une tile
-static int eval_tile_property(int type, uint16_t tile_id, uint8_t col, int mx, int my, uint32_t ts_primary, uint32_t ts_secondary) {
+static int eval_tile_property(int type, uint16_t tile_id, uint8_t col, int mx, int my, uint32_t events, uint8_t count, uint32_t warps, uint32_t attrs) {
     if (type == 0) { // Collision
         return (col != 0) ? 1 : 0;
     }
@@ -557,10 +661,7 @@ static int eval_tile_property(int type, uint16_t tile_id, uint8_t col, int mx, i
         if (tile_id == 655) return 1; // Clock
         
         // Check warps
-        uint32_t events = read32(0x0203731C);
         if (events >= 0x08000000) {
-            uint8_t count = read8(events + 0x01);
-            uint32_t warps = read32(events + 0x08);
 			for (unsigned w = 0; warps >= 0x08000000 && w < count; w++) {
 				if ((int16_t)read16(warps + (uint32_t)w * 8u) == mx && (int16_t)read16(warps + (uint32_t)w * 8u + 2u) == my) return 1;
 			}
@@ -570,8 +671,6 @@ static int eval_tile_property(int type, uint16_t tile_id, uint8_t col, int mx, i
     
     if (type == 2) { // Grass
         // On utilise le tileset primaire ou secondaire selon l'ID de la tile
-        uint32_t ts = (tile_id < 512) ? ts_primary : ts_secondary;
-        uint32_t attrs = ts ? read32(ts + 0x10) : 0;
 		if (attrs >= 0x08000000) {
 			uint32_t tile_off = (uint32_t)(tile_id % 512) * 2u;
 			uint16_t behavior16 = read16(attrs + tile_off);
@@ -591,6 +690,25 @@ void gba_behavior_map(int type, int state[INPUT_SIZE], int player_x, int player_
     uint32_t map_data = read32(layout + 0x0C);
     uint32_t ts_pri = read32(layout + 0x10);
     uint32_t ts_sec = read32(layout + 0x14);
+	uint32_t events = 0;
+	uint8_t count = 0;
+	uint32_t warps = 0;
+	uint32_t attrs = 0;
+
+	if (type == 1) {
+		events = read32(0x0203731C);
+		if (events >= 0x08000000) {
+			count = read8(events + 0x01);
+			warps = read32(events + 0x08);
+		}
+	} else if (type == 2) {
+		uint32_t ts = ts_pri;
+		attrs = ts ? read32(ts + 0x10) : 0;
+		if (attrs < 0x08000000) {
+			ts = ts_sec;
+			attrs = ts ? read32(ts + 0x10) : 0;
+		}
+	}
 
     int px = player_x - 7;
 	int py = player_y - 7;
@@ -610,7 +728,7 @@ void gba_behavior_map(int type, int state[INPUT_SIZE], int player_x, int player_
             
 			uint32_t pos = (uint32_t)my * map_w + (uint32_t)mx;
 			uint16_t tile = read16(map_data + pos * 2u);
-            behavior_out[r][c] = eval_tile_property(type, tile & 0x03FF, (tile >> 10) & 0x03, mx, my, ts_pri, ts_sec);
+			behavior_out[r][c] = eval_tile_property(type, tile & 0x03FF, (tile >> 10) & 0x03, mx, my, events, count, warps, attrs);
         }
     }
 
@@ -645,4 +763,14 @@ void gba_state(int state[INPUT_SIZE]) {
 	gba_behavior_map(0, state, (int)state[1], (int)state[2]); // Collision
 	gba_behavior_map(1, state, (int)state[1], (int)state[2]); // Interaction
 	gba_behavior_map(2, state, (int)state[1], (int)state[2]); // Herbe
+
+	// On fusionne les maps de collision et d'interaction
+	for (int i = 0; i < 121; i++) {
+		int coll_idx = 24 + i;
+		int inter_idx = 145 + i;
+		if (state[inter_idx] == 1) {
+			state[coll_idx] = -1;
+			state[inter_idx] = 0;
+		}
+	}
 }

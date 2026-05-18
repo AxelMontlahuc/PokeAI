@@ -5,6 +5,7 @@
 #include "ppo.h"
 #include "dense.h"
 #include "config.h"
+#include "agent.h"
 
 // Fonction coût de la value head/critic (MSE)
 double value_loss(double pred[MINIBATCH_SIZE], double target[MINIBATCH_SIZE]) {
@@ -41,7 +42,7 @@ void compute_advantages(double rewards[TRAJ_SIZE], double values[TRAJ_SIZE], int
 }
 
 // Fonction de coût de la policy head/actor i.e. L^CLIP = E[ min(r_t(θ) * A_t, clip(r_t(θ), 1-ε, 1+ε) * A_t) ] avec r_t(θ) = π_θ(a_t|s_t) / π_θ_old(a_t|s_t)
-double ppo_loss(Minibatch* minibatch, double prob[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double old_prob[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double advantages[MINIBATCH_SIZE], int actions[MINIBATCH_SIZE], double dlogp[MINIBATCH_SIZE]) {
+double ppo_loss(Minibatch* minibatch, double prob[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double old_prob[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double advantages[MINIBATCH_SIZE], int actions[MINIBATCH_SIZE], double dlogp[MINIBATCH_SIZE], double ent_coeff) {
     double loss = 0;
 
     for (int t=0; t<MINIBATCH_SIZE; t++) {
@@ -85,14 +86,43 @@ double ppo_loss(Minibatch* minibatch, double prob[MINIBATCH_SIZE][POLICY_OUTPUT_
     mean_entropy /= MINIBATCH_SIZE;
 
     loss /= MINIBATCH_SIZE;
-    loss -= ENTROPY_COEFF * mean_entropy;  // Encourage l'exploration
+    loss -= ent_coeff * mean_entropy;  // Encourage l'exploration
     return loss;
 }
 
 // Rétropropagation de la policy head/actor (y compris la fonction softmax)
-void policy_backward(Dense* policy_head, Minibatch* minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE]) {
+void policy_backward(Dense* policy_head, Minibatch* minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE], double ent_coeff) {
     double dlogp[MINIBATCH_SIZE];
-    minibatch->ppo_loss = ppo_loss(minibatch, new_probs, minibatch->probs, minibatch->advantages, minibatch->actions, dlogp);
+
+    // On normalise (moyenne à zéro et écart-type de un) et clip (à 5.0) les avantages (pour plus de stabilité)
+    double norm_adv[MINIBATCH_SIZE];
+    double mean = 0.0;
+    for (int t = 0; t < MINIBATCH_SIZE; t++) {
+        mean += minibatch->advantages[t];
+    }
+    mean /= MINIBATCH_SIZE;
+
+    double var = 0.0;
+    for (int t = 0; t < MINIBATCH_SIZE; t++) {
+        double diff = minibatch->advantages[t] - mean;
+        var += diff * diff;
+    }
+    var /= MINIBATCH_SIZE;
+    double std = sqrt(var + 1e-8);
+
+    const double ADV_CLIP = 5.0;
+    for (int t = 0; t < MINIBATCH_SIZE; t++) {
+        norm_adv[t] = (minibatch->advantages[t] - mean) / std;
+        
+        if (norm_adv[t] > ADV_CLIP) {
+            norm_adv[t] = ADV_CLIP;
+        }
+        if (norm_adv[t] < -ADV_CLIP) {
+            norm_adv[t] = -ADV_CLIP;
+        }
+    }
+
+    minibatch->ppo_loss = ppo_loss(minibatch, new_probs, minibatch->probs, norm_adv, minibatch->actions, dlogp, ent_coeff);
 
     double dL_dlogits[MINIBATCH_SIZE][MAX_OUTPUT_SIZE];
     for (int t=0; t<MINIBATCH_SIZE; t++) {
@@ -103,7 +133,7 @@ void policy_backward(Dense* policy_head, Minibatch* minibatch, double new_probs[
 
         for (int i=0; i<POLICY_OUTPUT_SIZE; i++) {
             dL_dlogits[t][i] = dlogp[t] * (new_probs[t][i] - (i == minibatch->actions[t])); // dL/dlogits = dL/dlogp * (dlogp/dlogits) + dL/dlogits_h avec dlogp/dlogits = new_probs - one_hot(actions)s
-            dL_dlogits[t][i] += ENTROPY_COEFF * new_probs[t][i] * (log(new_probs[t][i] + 1e-10) + entropy); // dL/dlogits_h = -ENTROPY_COEFF * (log(new_probs) + entropy) * new_probs
+            dL_dlogits[t][i] += ent_coeff * new_probs[t][i] * (log(new_probs[t][i] + 1e-10) + entropy); // dL/dlogits_h = -ENTROPY_COEFF * (log(new_probs) + entropy) * new_probs
         }
 
         minibatch->kl[t] = 0;

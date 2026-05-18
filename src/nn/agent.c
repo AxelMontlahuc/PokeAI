@@ -30,21 +30,44 @@ Agent* init_agent() {
     return agent;
 }
 
-// Fonction d'activation softmax (softmax = e^x / Σ(e^x)) pour convertir les "logits" (sorties brutes de la politique) en une distribution de probabilité
-void softmax(double* logits, int size, double* output) {
-    double max_logit = logits[0];
+// Système d'entropie/température dynamique
+void agent_set_schedule(Agent* agent, int epoch) {
+    // Décroissance linéaire de l'entropie
+    if (epoch >= ENTROPY_DECAY_EPOCHS) {
+        agent->entropy_coeff = ENTROPY_MIN;
+    } else {
+        double frac = (double)epoch / (double)ENTROPY_DECAY_EPOCHS;
+        agent->entropy_coeff = ENTROPY_INIT + frac * (ENTROPY_MIN - ENTROPY_INIT);
+    }
+
+    // TDécroissance linéaire de la température
+    if (epoch >= TEMP_DECAY_EPOCHS) {
+        agent->temperature = TEMP_MIN;
+    } else {
+        double frac_t = (double)epoch / (double)TEMP_DECAY_EPOCHS;
+        agent->temperature = TEMP_INIT + frac_t * (TEMP_MIN - TEMP_INIT);
+        if (agent->temperature < 1e-6) {
+            agent->temperature = 1e-6;
+        }
+    }
+}
+
+// Fonction d'activation softmax (softmax = e^(x/ T ) / Σ(e^(x/ T ))) pour convertir les "logits" en distribution
+void softmax(double* logits, int size, double* output, double temperature) {
+    double max_logit = logits[0] / temperature;
     for (int i=1; i<size; i++) {
-        if (logits[i] > max_logit) {
-            max_logit = logits[i];
+        double v = logits[i] / temperature;
+        if (v > max_logit) {
+            max_logit = v;
         }
     }
 
     double sum = 0;
     for (int i=0; i<size; i++) {
-        sum += exp(logits[i] - max_logit); // On soustrait le maximum pour des questions de stabilité numérique
+        sum += exp(logits[i] / temperature - max_logit); // On soustrait le maxmum pour de la stabilité numérique
     }
     for (int i=0; i<size; i++) {
-        output[i] = exp(logits[i] - max_logit) / sum;
+        output[i] = exp(logits[i] / temperature - max_logit) / sum;
     }
 }
 
@@ -62,12 +85,29 @@ int action_choice(double probs[POLICY_OUTPUT_SIZE]) {
 
 // Propagation pour tout l'agent
 void agent_forward_t(Agent* agent, int state[INPUT_SIZE], Trajectory* traj, int t) {
-    lstm_forward(&agent->lstm, traj, state, t);
+    // Normalisation (norme 2) des 24 premières valeurs seulement
+    int normalized_state[INPUT_SIZE];
+    double sumsq = 0.0;
+    for (int i = 0; i < 24; i++) {
+        double v = (double)state[i];
+        sumsq += v * v;
+    }
+    double norm = sqrt(sumsq) + 1e-8;
+    for (int i = 0; i < 24; i++) {
+        double v = (double)state[i] / norm;
+        double scaled = v * 1000.0;
+        normalized_state[i] = (int)scaled;
+    }
+
+    for (int i = 24; i < INPUT_SIZE; i++) {
+        normalized_state[i] = state[i];
+    }
+    lstm_forward(&agent->lstm, traj, normalized_state, t);
 
     dense_forward(&agent->policy_head, agent->lstm.hidden_state, agent->policy_logits);
     dense_forward(&agent->value_head, agent->lstm.hidden_state, agent->value_logits);
 
-    softmax(agent->policy_logits, agent->policy_head.output_size, traj->probs[t]);
+    softmax(agent->policy_logits, agent->policy_head.output_size, traj->probs[t], agent->temperature);
 
     traj->actions[t] = action_choice(traj->probs[t]);
     traj->values[t] = agent->value_logits[0];
@@ -90,7 +130,7 @@ void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]) {
             srand((unsigned int)env);
             // Création d'une instance de l'émulateur nécessaire après le fork (pour avoir des émulateurs différents)
             gba_set_core_silent(1); 
-            gba_set_press_timing(6, 20);
+            gba_set_press_timing(3, 20);
             gba_set_video_enabled(0);
             gba_create("../libretro-super/dist/unix/mgba_libretro.so", "rom/pokemon.gba");
             gba_reset("rom/start.sav");
@@ -137,7 +177,7 @@ void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]) {
 void recompute_probs(Agent* agent, Minibatch* current_minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE]) {
     for (int t=0; t<MINIBATCH_SIZE; t++) {
         dense_forward(&agent->policy_head, current_minibatch->hidden_states[t], agent->policy_logits);
-        softmax(agent->policy_logits, agent->policy_head.output_size, new_probs[t]);
+        softmax(agent->policy_logits, agent->policy_head.output_size, new_probs[t], agent->temperature);
     }
 }
 
@@ -153,63 +193,32 @@ double compute_std(double array[MINIBATCH_SIZE], double mean) {
     return sqrt(variance);
 }
 
-void logging(Minibatch* minibatch) {
-    double loss_ppo = minibatch->ppo_loss;
-    double loss_value = minibatch->value_loss;
-    double reward_sum = 0;
-    double value_mean = 0;
-    double value_std = 0;
-    double advantage_mean = 0;
-    double advantage_std = 0;
-    double ratio_mean = 0;
-    double unclipped_ratio_mean = 0;
-    double clipped_percentage = 0;
-    double mean_entropy = 0;
-    double kl_mean = 0;
-    double actions[POLICY_OUTPUT_SIZE] = {0};
+void print_epoch_summary(const EpochSummary* summary) {
+    int total_steps = summary->minibatch_count * MINIBATCH_SIZE;
+    double ppo_loss = summary->ppo_loss_sum / summary->minibatch_count;
+    double value_loss = summary->value_loss_sum / summary->minibatch_count;
+    double value_mean = summary->value_sum / total_steps;
+    double value_std = sqrt(fmax(0.0, (summary->value_sq_sum / total_steps) - value_mean * value_mean));
+    double adv_mean = summary->adv_sum / total_steps;
+    double adv_std = sqrt(fmax(0.0, (summary->adv_sq_sum / total_steps) - adv_mean * adv_mean));
+    double ratio_mean = summary->ratio_sum / total_steps;
+    double unclipped_ratio_mean = summary->unclipped_ratio_sum / total_steps;
+    double clipped_percentage = (summary->clipped_count / total_steps) * 100.0;
+    double entropy_mean = summary->entropy_sum / total_steps;
+    double kl_mean = summary->kl_sum / total_steps;
 
-    for (int t=0; t<MINIBATCH_SIZE; t++) {
-        reward_sum += minibatch->rewards[t];
-        value_mean += minibatch->values[t];
-        advantage_mean += minibatch->advantages[t];
-        ratio_mean += minibatch->ratios[t];
-        unclipped_ratio_mean += minibatch->unclipped_ratios[t];
-        clipped_percentage += minibatch->clipped[t];
+    printf("EPOCH SUMMARY: PPO loss: %.6f | Value loss: %.6f | Average Reward: %.4f | Value mean: %.4f | Value std: %.4f | Adv mean: %.4f | Adv std: %.4f | Ratio mean: %.4f | Unclipped mean: %.4f | Clipped %%: %.2f%% | Entropy: %.4f | KL: %.6f\n",
+        ppo_loss, value_loss, (summary->reward_sum/((double)(summary->minibatch_count * MINIBATCH_SIZE))), value_mean, value_std, adv_mean, adv_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, entropy_mean, kl_mean);
 
-        double current_entropy = 0;
-        for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
-            current_entropy -= minibatch->probs[t][j] * log(minibatch->probs[t][j] + 1e-10); // On évite log(0)
-        }
-        mean_entropy += current_entropy;
-        kl_mean += minibatch->kl[t];
-        actions[minibatch->actions[t]] += 1;
-    }
-
-    value_mean /= MINIBATCH_SIZE;
-    advantage_mean /= MINIBATCH_SIZE;
-    value_std = compute_std(minibatch->values, value_mean);
-    advantage_std = compute_std(minibatch->advantages, advantage_mean);
-    ratio_mean /= MINIBATCH_SIZE;
-    unclipped_ratio_mean /= MINIBATCH_SIZE;
-    clipped_percentage /= MINIBATCH_SIZE;
-    clipped_percentage *= 100;
-    kl_mean /= MINIBATCH_SIZE;
-    mean_entropy /= MINIBATCH_SIZE;
-
+    printf("Action distribution (%%): ");
     for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
-        actions[j] /= MINIBATCH_SIZE;
-        actions[j] *= 100;
+        double pct = (summary->action_counts[j] / total_steps) * 100.0;
+        printf("A%d: %.2f%% ", j, pct);
     }
-
-    printf("Reward sum: %.4f | Loss: %.4f | Value mean: %.4f | Value std: %.4f | Value loss: %.4f | Advantage mean: %.4f | Advantage std: %.4f | Ratio mean: %.4f | Unclipped ratio mean: %.4f | Clipped percentage: %.2f%% | Mean entropy: %.4f | KL divergence: %.4f\n", reward_sum, loss_ppo, value_mean, value_std, loss_value, advantage_mean, advantage_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, mean_entropy, kl_mean);
-    printf("Action distribution: ");
-    for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
-        printf("Action %d: %.2f%%, ", j, actions[j]);
-    }
-    printf("\n\n");
+    printf("\n");
 }
 
-void agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibatch) {
+double agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibatch) {
     // Rétropropagation de la value head/critic
     double returns[MINIBATCH_SIZE];
     for (int t=0; t<MINIBATCH_SIZE; t++) {
@@ -228,7 +237,7 @@ void agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibat
     double dL_dw_p[MAX_OUTPUT_SIZE][HIDDEN_SIZE] = {0};
     double dL_db_p[MAX_OUTPUT_SIZE] = {0};
     double dL_dinput_p[MINIBATCH_SIZE][HIDDEN_SIZE] = {0};
-    policy_backward(&agent->policy_head, minibatch, new_probs, dL_dw_p, dL_db_p, dL_dinput_p);
+    policy_backward(&agent->policy_head, minibatch, new_probs, dL_dw_p, dL_db_p, dL_dinput_p, agent->entropy_coeff);
 
     // Rétropropagation à travers le LSTM
     double dL_dwf[HIDDEN_SIZE][COL_SIZE] = {0};
@@ -240,8 +249,7 @@ void agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibat
     double dL_dbc[HIDDEN_SIZE] = {0};
     double dL_dbo[HIDDEN_SIZE] = {0};
 
-    double c_ini[HIDDEN_SIZE] = {0}; // On suppose que la mémoire à long terme est initialisée à zéro au début de chaque trajectoire pour l'instant, mais il faudra à terme le stocker et le faire passer d'une trajectoire à l'autre
-    lstm_backward(&agent->lstm, minibatch, dL_dinput_v, dL_dinput_p, c_ini, dL_dwf, dL_dwi, dL_dwc, dL_dwo, dL_dbf, dL_dbi, dL_dbc, dL_dbo);
+    lstm_backward(&agent->lstm, minibatch, dL_dinput_v, dL_dinput_p, minibatch->c_ini, dL_dwf, dL_dwi, dL_dwc, dL_dwo, dL_dbf, dL_dbi, dL_dbc, dL_dbo);
 
     // Mise à jour des poids avec Adam
     optim->t += 1;
@@ -262,10 +270,17 @@ void agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibat
     optimizer_step_vector_2(optim, agent->lstm.bc, agent->lstm.bc_m, agent->lstm.bc_v, dL_dbc, HIDDEN_SIZE);
     optimizer_step_vector_2(optim, agent->lstm.bo, agent->lstm.bo_m, agent->lstm.bo_v, dL_dbo, HIDDEN_SIZE);
 
-    logging(minibatch);
+
+    double kl_mean = 0.0;
+    for (int t=0; t<MINIBATCH_SIZE; t++) {
+        kl_mean += minibatch->kl[t];
+    }
+    kl_mean /= MINIBATCH_SIZE;
+
+    return kl_mean;
 }
 
-void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS]) {
+double agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS], EpochSummary* summary) {
     int num_minibatches = BATCH_SIZE / MINIBATCH_SIZE;
     Minibatch* minibatches[num_minibatches];
 
@@ -296,6 +311,14 @@ void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS]) 
         memcpy(minibatches[i]->g, &traj[num_traj]->g[start], sizeof(minibatches[i]->g));
         memcpy(minibatches[i]->o, &traj[num_traj]->o[start], sizeof(minibatches[i]->o));
         memcpy(minibatches[i]->c, &traj[num_traj]->c[start], sizeof(minibatches[i]->c));
+        // On trouve la bonne cellule au début du minibatch
+        if (start > 0 && traj[num_traj]->done[start-1] == 0) {
+            memcpy(minibatches[i]->c_ini, traj[num_traj]->c[start-1], sizeof(minibatches[i]->c_ini));
+        } else { // Sinon on initialise la cellule à 0
+            for (int j=0; j<HIDDEN_SIZE; j++) {
+                minibatches[i]->c_ini[j] = 0.0;
+            }
+        }
         memcpy(minibatches[i]->actions, &traj[num_traj]->actions[start], sizeof(minibatches[i]->actions));
         memcpy(minibatches[i]->rewards, &traj[num_traj]->rewards[start], sizeof(minibatches[i]->rewards));
         memcpy(minibatches[i]->probs, &traj[num_traj]->probs[start], sizeof(minibatches[i]->probs));
@@ -305,14 +328,42 @@ void agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS]) 
     }
 
     // Rétropropagation
+    double epoch_kl_sum = 0.0;
     for (int i=0; i<num_minibatches; i++) {
-        agent_backward_minibatch(agent, optim, minibatches[i]);
+        double minibatch_kl = agent_backward_minibatch(agent, optim, minibatches[i]);
+        epoch_kl_sum += minibatch_kl;
     }
+    double mean_epoch_kl = epoch_kl_sum / num_minibatches;
+
+    for (int i=0; i<num_minibatches; i++) {
+        Minibatch* mb = minibatches[i];
+        summary->ppo_loss_sum += mb->ppo_loss;
+        summary->value_loss_sum += mb->value_loss;
+        for (int t=0; t<MINIBATCH_SIZE; t++) {
+            summary->reward_sum += mb->rewards[t];
+            summary->value_sum += mb->values[t];
+            summary->value_sq_sum += mb->values[t] * mb->values[t];
+            summary->adv_sum += mb->advantages[t];
+            summary->adv_sq_sum += mb->advantages[t] * mb->advantages[t];
+            summary->ratio_sum += mb->ratios[t];
+            summary->unclipped_ratio_sum += mb->unclipped_ratios[t];
+            summary->clipped_count += mb->clipped[t];
+            for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
+                double p = mb->probs[t][j];
+                summary->entropy_sum += -p * log(p + 1e-10);
+            }
+            summary->kl_sum += mb->kl[t];
+            summary->action_counts[mb->actions[t]] += 1.0;
+        }
+    }
+    summary->minibatch_count += num_minibatches;
 
     // Libération de la mémoire
     for (int i=0; i<num_minibatches; i++) {
         free(minibatches[i]);
     }
+
+    return mean_epoch_kl;
 }
 
 void train_epoch(Agent* agent, Optimizer* optim) {
@@ -350,10 +401,16 @@ void train_epoch(Agent* agent, Optimizer* optim) {
 
     agent_forward(agent, traj);
 
+    EpochSummary epoch_summary = {0};
+
     for (int ppo_epoch=0; ppo_epoch<PPO_EPOCHS; ppo_epoch++) {
-        printf("PPO Epoch %d/%d\n", ppo_epoch+1, PPO_EPOCHS);
-        agent_backward(agent, optim, traj);
+        double mean_kl = agent_backward(agent, optim, traj, &epoch_summary);
+        if (ppo_epoch + 1 >= KL_MIN_EPOCHS && mean_kl > KL_TARGET) {
+            break;
+        }
     }
+
+    print_epoch_summary(&epoch_summary);
 
     // Libération de la mémoire partagée
     for (int env=0; env<NUM_ENVS; env++) {
@@ -368,6 +425,8 @@ void train(Agent* agent, Optimizer* optim, int epochs) {
     for (int epoch=0; epoch<epochs; epoch++) {
         reset_flags();
         printf("\n========== Epoch %d/%d ==========\n", epoch+1, epochs);
+        agent_set_schedule(agent, epoch);
+        printf("Entropy coeff: %.6f | Temperature: %.6f\n", agent->entropy_coeff, agent->temperature);
         train_epoch(agent, optim);
     }
 }

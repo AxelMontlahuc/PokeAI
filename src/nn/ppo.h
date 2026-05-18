@@ -31,6 +31,7 @@ struct Minibatch {
     double g[MINIBATCH_SIZE][HIDDEN_SIZE]; // On note g la porte candidat pour éviter la confusion avec la mémoire à long-terme (cellule) c
     double o[MINIBATCH_SIZE][HIDDEN_SIZE];
     double c[MINIBATCH_SIZE][HIDDEN_SIZE]; // Mémoire à long terme (cellule) du LSTM
+    double c_ini[HIDDEN_SIZE];             // Requis pour la rétropropagation du LSTM
     int actions[MINIBATCH_SIZE];
     double rewards[MINIBATCH_SIZE];
     double probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE];
@@ -48,7 +49,7 @@ typedef struct Minibatch Minibatch;
 
 double value_backward(Dense* value_head, double pred[MINIBATCH_SIZE], double target[MINIBATCH_SIZE], double input[MINIBATCH_SIZE][HIDDEN_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE]);
 void compute_advantages(double rewards[TRAJ_SIZE], double values[TRAJ_SIZE], int done[TRAJ_SIZE], double advantages[TRAJ_SIZE]);
-double ppo_loss(Minibatch* minibatch, double prob[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double old_prob[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double advantages[MINIBATCH_SIZE], int actions[MINIBATCH_SIZE], double dlogp[MINIBATCH_SIZE]);
-void policy_backward(Dense* policy_head, Minibatch* minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE]);
+double ppo_loss(Minibatch* minibatch, double prob[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double old_prob[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double advantages[MINIBATCH_SIZE], int actions[MINIBATCH_SIZE], double dlogp[MINIBATCH_SIZE], double ent_coeff);
+void policy_backward(Dense* policy_head, Minibatch* minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE], double ent_coeff);
 
 #endif
