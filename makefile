@@ -1,120 +1,39 @@
 CC := gcc
-AR := ar
-CSTD := -std=c99
-CFLAGS := $(CSTD) -Wall -Wextra -O3 -march=native -ffast-math -Isrc -Igba -Imgba/include
 
-ifeq ($(OS),Windows_NT)
-	UNAME_S := Windows
-else
-	UNAME_S := $(shell uname -s)
-endif
+TARGET := ai
 
-ifeq ($(UNAME_S),Linux)
-	LDFLAGS := -lm -ldl
-	EXE :=
-	MKDIR_P := mkdir -p
-	RM_RF := rm -rf
-else ifeq ($(UNAME_S),Darwin)
-	# macOS
-	LDFLAGS := -lm
-	EXE :=
-	MKDIR_P := mkdir -p
-	RM_RF := rm -rf
-else
-	# Windows
-	LDFLAGS := -lws2_32 -lm
-	EXE := .exe
-	MKDIR_P := powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path"
-	RM_RF := cmd /C rmdir /S /Q
-endif
+SRC := \
+	src/nn/agent.c \
+	src/nn/lstm.c \
+	src/nn/dense.c \
+	src/nn/ppo.c \
+	src/nn/adam.c \
+	src/emu/libretro_emu.c \
+	src/game/reward.c \
+	src/io/checkpoint.c
 
-BUILD_DIR := build
-BIN_DIR := bin
+INCLUDES := -Isrc -Isrc/nn -Isrc/emu -Isrc/game -Isrc/io
 
-MGBA_SRC := \
-	mgba/src/mgba_connection.c \
-	mgba/src/mgba_controller.c \
-	mgba/src/mgba_intel.c
-	
-COMMON_SRC := \
-	src/policy.c \
-	src/constants.c \
-	src/checkpoint.c \
-	src/reward.c \
-	src/serializer.c \
-	gba/gba.c \
-	$(MGBA_SRC)
+COMMON_CFLAGS := -std=c99 -Wall -Wextra -Wshadow -Wconversion -Wpedantic \
+	-include stdbool.h $(INCLUDES)
 
-WORKER_SRC := \
-	src/worker.c \
-	src/state.c \
-	$(COMMON_SRC)
+DEBUG_CFLAGS := -O0 -g3 -DDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer
+FAST_CFLAGS := -Ofast -flto -march=native -funroll-loops -fno-math-errno -funsafe-math-optimizations -DNDEBUG
 
-LEARNER_SRC := \
-	src/learner.c \
-	src/state.c \
-	$(COMMON_SRC)
+LDFLAGS := -lm -ldl
 
-RUN_SRC := \
-	src/run.c \
-	src/state.c \
-	$(COMMON_SRC)
+.PHONY: all debug fast clean record_run
 
-# Savemaker binary
-SAVEMAKER_SRC := \
-	src/savemaker.c \
-	src/state.c \
-	$(COMMON_SRC)
+all: debug
 
-WORKER_OBJS := $(WORKER_SRC:%.c=$(BUILD_DIR)/%.o)
-LEARNER_OBJS := $(LEARNER_SRC:%.c=$(BUILD_DIR)/%.o)
-RUN_OBJS := $(RUN_SRC:%.c=$(BUILD_DIR)/%.o)
-SAVEMAKER_OBJS := $(SAVEMAKER_SRC:%.c=$(BUILD_DIR)/%.o)
+debug:
+	$(CC) $(COMMON_CFLAGS) $(DEBUG_CFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
 
-WORKER_TARGET := $(BIN_DIR)/worker$(EXE)
-LEARNER_TARGET := $(BIN_DIR)/learner$(EXE)
-RUN_TARGET := $(BIN_DIR)/run$(EXE)
-SAVEMAKER_TARGET := $(BIN_DIR)/savemaker$(EXE)
+fast:
+	$(CC) $(COMMON_CFLAGS) $(FAST_CFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
 
-
-.PHONY: all clean run dirs
-
-all: $(WORKER_TARGET) $(LEARNER_TARGET) $(RUN_TARGET) $(SAVEMAKER_TARGET)
-
-dirs:
-ifneq ($(UNAME_S),Windows)
-	@$(MKDIR_P) $(BUILD_DIR) $(BIN_DIR) $(BUILD_DIR)/src $(BUILD_DIR)/gba $(BUILD_DIR)/mgba $(BUILD_DIR)/mgba/src
-else
-	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)' | Out-Null"
-	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BIN_DIR)' | Out-Null"
-	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/src' | Out-Null"
-	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/gba' | Out-Null"
-	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/mgba' | Out-Null"
-	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(BUILD_DIR)/mgba/src' | Out-Null"
-endif
-
-$(WORKER_TARGET): dirs $(WORKER_OBJS)
-	$(CC) $(WORKER_OBJS) -o $@ $(LDFLAGS)
-
-$(LEARNER_TARGET): dirs $(LEARNER_OBJS)
-	$(CC) $(LEARNER_OBJS) -o $@ $(LDFLAGS)
-
-$(RUN_TARGET): dirs $(RUN_OBJS)
-	$(CC) $(RUN_OBJS) -o $@ $(LDFLAGS)
-
-$(SAVEMAKER_TARGET): dirs $(SAVEMAKER_OBJS)
-	$(CC) $(SAVEMAKER_OBJS) -o $@ $(LDFLAGS)
-
-$(BUILD_DIR)/%.o: %.c | dirs
-	$(CC) $(CFLAGS) -c $< -o $@
-
-run: $(LEARNER_TARGET)
-	$(LEARNER_TARGET)
+record_run:
+	$(CC) $(COMMON_CFLAGS) $(FAST_CFLAGS) -o utils/record_run utils/record_run.c src/nn/lstm.c src/nn/dense.c src/nn/ppo.c src/nn/adam.c src/emu/libretro_emu.c src/game/reward.c src/io/checkpoint.c $(LDFLAGS)
 
 clean:
-	-@echo Cleaning...
-ifneq ($(UNAME_S),Windows)
-	-@$(RM_RF) $(BUILD_DIR) $(BIN_DIR)
-else
-	-@cmd /C rmdir /S /Q $(BUILD_DIR) $(BIN_DIR) 2> NUL || exit 0
-endif
+	rm -f $(TARGET) utils/record_run
