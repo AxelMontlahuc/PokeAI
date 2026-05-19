@@ -32,12 +32,15 @@ double value_backward(Dense* value_head, double pred[MINIBATCH_SIZE], double tar
     return value_loss(pred, target);
 }
 
-// Calcul des avantages via la méthode GAE (Generalized Advantage Estimation)
+// Calcul des avantages via la methode GAE (Generalized Advantage Estimation) avec bootstrap de la valeur finale
 void compute_advantages(double rewards[TRAJ_SIZE], double values[TRAJ_SIZE], int done[TRAJ_SIZE], double advantages[TRAJ_SIZE]) {
-    advantages[TRAJ_SIZE-1] = rewards[TRAJ_SIZE-1] - values[TRAJ_SIZE-1];
-    for (int t=TRAJ_SIZE-2; t>=0; t--) {
-        double delta = rewards[t] + GAMMA * values[t+1] * (1 - done[t]) - values[t];
-        advantages[t] = delta + GAMMA * LAMBDA * advantages[t+1] * (1 - done[t]);
+    double next_value = values[TRAJ_SIZE-1]; // On utilise values[TRAJ_SIZE-1] comme approximation pour le bootstrap de values[TRAJ_SIZE]
+    double next_advantage = 0.0;
+    for (int t=TRAJ_SIZE-1; t>=0; t--) {
+        double delta = rewards[t] + GAMMA * next_value * (1 - done[t]) - values[t];
+        advantages[t] = delta + GAMMA * LAMBDA * next_advantage * (1 - done[t]);
+        next_value = values[t];
+        next_advantage = advantages[t];
     }
 }
 

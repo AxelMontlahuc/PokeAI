@@ -8,14 +8,14 @@
 #define MAX_OUTPUT_SIZE 6
 #define COL_SIZE (INPUT_SIZE + HIDDEN_SIZE)  // INPUT_SIZE + HIDDEN_SIZE
 
-#define EPOCHS 50
-#define NUM_ENVS 8
-#define PPO_EPOCHS 8
-#define TRAJ_SIZE 2048
+#define EPOCHS 500
+#define NUM_ENVS 16
+#define PPO_EPOCHS 3
+#define TRAJ_SIZE 8162
 #define BATCH_SIZE (TRAJ_SIZE * NUM_ENVS)
-#define MINIBATCH_SIZE 512
+#define MINIBATCH_SIZE 256
 
-#define GAMMA 0.99
+#define GAMMA 0.995
 #define LAMBDA 0.95 // pour la GAE
 #define EPSILON 0.2
 
@@ -27,13 +27,13 @@
 #define ENTROPY_COEFF 0.02
 
 // Permet de stopper prématurément les epochs de PPO si le KL devient trop grand
-#define KL_TARGET 0.02
+#define KL_TARGET 0.03
 #define KL_MIN_EPOCHS 1
 
-// Entropi dynamique
-#define ENTROPY_INIT 0.02
-#define ENTROPY_MIN 0.002
-#define ENTROPY_DECAY_EPOCHS 100
+// Entropie dynamique
+#define ENTROPY_INIT 0.01
+#define ENTROPY_MIN 0.005
+#define ENTROPY_DECAY_EPOCHS 150
 
 // Système de température
 #define TEMP_INIT 2.0

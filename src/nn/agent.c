@@ -143,6 +143,10 @@ void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]) {
             char screen_path[64];
             snprintf(screen_path, sizeof(screen_path), "screenshots/screen_%d.bmp", env);
 
+            // Reinitialisation de la memoire recurrente du LSTM pour la nouvelle trajectoire
+            memset(agent->lstm.hidden_state, 0, sizeof(agent->lstm.hidden_state));
+            memset(agent->lstm.cell_state, 0, sizeof(agent->lstm.cell_state));
+
             for (int t=0; t<TRAJ_SIZE; t++) {
                 int state[INPUT_SIZE];
                 gba_state(state);
