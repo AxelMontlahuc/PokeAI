@@ -24,6 +24,7 @@ static int g_hold[RETRO_DEVICE_ID_JOYPAD_R3+1] = {0};
 static int g_press_hold_frames = 2;
 static int g_press_total_frames = 1;
 static int g_video_enabled = 1;
+static int g_frameskip = 0;
 
 static uint8_t *g_last_rgb = NULL;
 static unsigned g_last_w = 0, g_last_h = 0;
@@ -130,6 +131,22 @@ static bool core_environment(unsigned cmd, void *data) {
 	case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
 		*(const char **)data = "."; 
 		return true;
+	case RETRO_ENVIRONMENT_GET_VARIABLE: {
+		struct retro_variable *var = (struct retro_variable *)data;
+		if (var && var->key) {
+			if (strcmp(var->key, "mgba_frameskip") == 0) {
+				static char fs_str[16];
+				snprintf(fs_str, sizeof(fs_str), "%d", g_frameskip);
+				var->value = fs_str;
+				return true;
+			}
+			if (strcmp(var->key, "mgba_idle_optimization") == 0) {
+				var->value = (g_frameskip > 0) ? "Detect and Remove" : "Don't Remove";
+				return true;
+			}
+		}
+		return false;
+	}
 	case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: {
 		const struct retro_memory_map *m = (const struct retro_memory_map *)data;
 		free(g_memmap_desc); g_memmap_desc = NULL; g_memmap.descriptors = NULL; g_memmap.num_descriptors = 0;
@@ -493,6 +510,11 @@ void gba_set_video_enabled(int enabled) {
 	g_video_enabled = enabled ? 1 : 0;
 }
 
+void gba_set_frameskip(int frameskip) {
+	if (frameskip < 0) frameskip = 0;
+	g_frameskip = frameskip;
+}
+
 long gba_ram(uint32_t addr, size_t nbytes) {
 	if (nbytes == 0) return 0;
 	if (!g_sysram || g_sysram_size == 0) {
@@ -548,9 +570,14 @@ int gba_button(int button_code) {
 	map_button(button_code, &id);
 
 	g_hold[id] = g_press_hold_frames;
+	int orig_video = g_video_enabled;
 	for (int i = 0; i < g_press_total_frames; ++i) {
+		if (orig_video) {
+			g_video_enabled = (i == g_press_total_frames - 1) ? 1 : 0;
+		}
 		core_run_silent_wrapper();
 	}
+	g_video_enabled = orig_video;
 
 	return 0;
 }
@@ -576,9 +603,14 @@ int gba_reset(const char* savestate) {
 }
 
 void gba_run(int frames) {
+	int orig_video = g_video_enabled;
 	for (int i = 0; i < frames; ++i) {
+		if (orig_video) {
+			g_video_enabled = (i == frames - 1) ? 1 : 0;
+		}
 		core_run_silent_wrapper();
 	}
+	g_video_enabled = orig_video;
 }
 
 int gba_create(const char* core_so, const char* rom_path) {

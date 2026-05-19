@@ -18,5 +18,6 @@ void gba_state(int state[INPUT_SIZE]);
 void gba_set_core_silent(int silent);
 void gba_set_press_timing(int hold_frames, int total_frames);
 void gba_set_video_enabled(int enabled);
+void gba_set_frameskip(int frameskip);
 
 #endif

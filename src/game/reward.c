@@ -42,18 +42,7 @@ void reset_flags() {
 }
 
 double reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]) {
-	double r = 0;
-
-    // No action penalty
-    bool no_action = true;
-    for (int i=0; i<INPUT_SIZE; i++) {
-        if (old_state[i] != new_state[i]) {
-            no_action = false;
-        }
-    }
-    if (no_action) {
-        r -= 0.005;
-    }
+	double r = -0.001;
 
 	if (!PLAYER_HOUSE_FLAG && new_state[0] == 1) {
 		r += 1;

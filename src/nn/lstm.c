@@ -329,4 +329,18 @@ void lstm_backward(Lstm* lstm, Minibatch* minibatch, double dL_dh_v[MINIBATCH_SI
             }
         }
     }
+
+    // Calcul de la moyenne sur le minibatch
+    for (int j=0; j<HIDDEN_SIZE; j++) {
+        for (int k=0; k<COL_SIZE; k++) {
+            dL_dwf[j][k] /= MINIBATCH_SIZE;
+            dL_dwi[j][k] /= MINIBATCH_SIZE;
+            dL_dwc[j][k] /= MINIBATCH_SIZE;
+            dL_dwo[j][k] /= MINIBATCH_SIZE;
+        }
+        dL_dbf[j] /= MINIBATCH_SIZE;
+        dL_dbi[j] /= MINIBATCH_SIZE;
+        dL_dbc[j] /= MINIBATCH_SIZE;
+        dL_dbo[j] /= MINIBATCH_SIZE;
+    }
 }

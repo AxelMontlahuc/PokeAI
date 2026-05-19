@@ -9,9 +9,10 @@ SRC := \
 	src/nn/ppo.c \
 	src/nn/adam.c \
 	src/emu/libretro_emu.c \
-	src/game/reward.c
+	src/game/reward.c \
+	src/io/checkpoint.c
 
-INCLUDES := -Isrc -Isrc/nn -Isrc/emu -Isrc/game
+INCLUDES := -Isrc -Isrc/nn -Isrc/emu -Isrc/game -Isrc/io
 
 COMMON_CFLAGS := -std=c99 -Wall -Wextra -Wshadow -Wconversion -Wpedantic \
 	-include stdbool.h $(INCLUDES)

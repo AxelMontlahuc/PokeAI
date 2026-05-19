@@ -11,28 +11,28 @@
 #define EPOCHS 50
 #define NUM_ENVS 8
 #define PPO_EPOCHS 8
-#define TRAJ_SIZE 512
+#define TRAJ_SIZE 2048
 #define BATCH_SIZE (TRAJ_SIZE * NUM_ENVS)
-#define MINIBATCH_SIZE 256
+#define MINIBATCH_SIZE 512
 
 #define GAMMA 0.99
-#define LAMBDA 0.9 // pour GAE
-#define EPSILON 0.3
+#define LAMBDA 0.95 // pour la GAE
+#define EPSILON 0.2
 
-#define LEARNING_RATE 0.0005
+#define LEARNING_RATE 0.0003
 #define BETA1 0.9
 #define BETA2 0.999
 #define EPSILON_ADAM 1e-8
 
-#define ENTROPY_COEFF 0.04
+#define ENTROPY_COEFF 0.02
 
 // Permet de stopper prématurément les epochs de PPO si le KL devient trop grand
-#define KL_TARGET 0.01
+#define KL_TARGET 0.02
 #define KL_MIN_EPOCHS 1
 
 // Entropi dynamique
-#define ENTROPY_INIT 0.04
-#define ENTROPY_MIN 0.005
+#define ENTROPY_INIT 0.02
+#define ENTROPY_MIN 0.002
 #define ENTROPY_DECAY_EPOCHS 100
 
 // Système de température

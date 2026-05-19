@@ -54,17 +54,17 @@ double ppo_loss(Minibatch* minibatch, double prob[MINIBATCH_SIZE][POLICY_OUTPUT_
             if (advantages[t] > 0) {
                 dlogp[t] = 0;
             } else {
-                dlogp[t] = -advantages[t] * unclipped; // dL/dlogp = -A_t * r_t
+                dlogp[t] = advantages[t] * unclipped; // dL/dlogp = A_t * r_t
             }
         } else if (clipped < 1 - EPSILON) {
             clipped = 1 - EPSILON;
             if (advantages[t] < 0) {
                 dlogp[t] = 0;
             } else {
-                dlogp[t] = -advantages[t] * unclipped; // dL/dlogp = -A_t * r_t
+                dlogp[t] = advantages[t] * unclipped; // dL/dlogp = A_t * r_t
             }
         } else {
-            dlogp[t] = -advantages[t] * unclipped; // dL/dlogp = -A_t * r_t
+            dlogp[t] = advantages[t] * unclipped; // dL/dlogp = A_t * r_t
         }
 
         minibatch->ratios[t] = fmin(unclipped, clipped);
@@ -91,7 +91,7 @@ double ppo_loss(Minibatch* minibatch, double prob[MINIBATCH_SIZE][POLICY_OUTPUT_
 }
 
 // Rétropropagation de la policy head/actor (y compris la fonction softmax)
-void policy_backward(Dense* policy_head, Minibatch* minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE], double ent_coeff) {
+void policy_backward(Dense* policy_head, Minibatch* minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE], double ent_coeff, double temperature) {
     double dlogp[MINIBATCH_SIZE];
 
     // On normalise (moyenne à zéro et écart-type de un) et clip (à 5.0) les avantages (pour plus de stabilité)
@@ -110,7 +110,7 @@ void policy_backward(Dense* policy_head, Minibatch* minibatch, double new_probs[
     var /= MINIBATCH_SIZE;
     double std = sqrt(var + 1e-8);
 
-    const double ADV_CLIP = 5.0;
+    double ADV_CLIP = 5.0;
     for (int t = 0; t < MINIBATCH_SIZE; t++) {
         norm_adv[t] = (minibatch->advantages[t] - mean) / std;
         
@@ -132,8 +132,7 @@ void policy_backward(Dense* policy_head, Minibatch* minibatch, double new_probs[
         }
 
         for (int i=0; i<POLICY_OUTPUT_SIZE; i++) {
-            dL_dlogits[t][i] = dlogp[t] * (new_probs[t][i] - (i == minibatch->actions[t])); // dL/dlogits = dL/dlogp * (dlogp/dlogits) + dL/dlogits_h avec dlogp/dlogits = new_probs - one_hot(actions)s
-            dL_dlogits[t][i] += ent_coeff * new_probs[t][i] * (log(new_probs[t][i] + 1e-10) + entropy); // dL/dlogits_h = -ENTROPY_COEFF * (log(new_probs) + entropy) * new_probs
+            dL_dlogits[t][i] = (dlogp[t] * (new_probs[t][i] - (i == minibatch->actions[t])) + ent_coeff * new_probs[t][i] * (log(new_probs[t][i] + 1e-10) + entropy)) / temperature; // dL/dlogits = dL/dlogp * (dlogp/dlogits) + dL/dlogits_h avec dlogp/dlogits = new_probs - one_hot(actions)s et dL/dlogits_h = -ENTROPY_COEFF * (log(new_probs) + entropy) * new_probs
         }
 
         minibatch->kl[t] = 0;

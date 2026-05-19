@@ -4,11 +4,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdint.h>
 
 // Pour la parallélisation
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <fcntl.h>
 
 #include "agent.h"
@@ -18,6 +21,7 @@
 #include "config.h"
 #include "reward.h"
 #include "libretro_emu.h"
+#include "checkpoint.h"
 
 // Initialisation de l'agent
 Agent* init_agent() {
@@ -130,8 +134,9 @@ void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]) {
             srand((unsigned int)env);
             // Création d'une instance de l'émulateur nécessaire après le fork (pour avoir des émulateurs différents)
             gba_set_core_silent(1); 
-            gba_set_press_timing(3, 20);
+            gba_set_press_timing(1, 20);
             gba_set_video_enabled(0);
+            gba_set_frameskip(9);
             gba_create("../libretro-super/dist/unix/mgba_libretro.so", "rom/pokemon.gba");
             gba_reset("rom/start.sav");
 
@@ -193,7 +198,7 @@ double compute_std(double array[MINIBATCH_SIZE], double mean) {
     return sqrt(variance);
 }
 
-void print_epoch_summary(const EpochSummary* summary) {
+void print_epoch_summary(EpochSummary* summary) {
     int total_steps = summary->minibatch_count * MINIBATCH_SIZE;
     double ppo_loss = summary->ppo_loss_sum / summary->minibatch_count;
     double value_loss = summary->value_loss_sum / summary->minibatch_count;
@@ -207,12 +212,12 @@ void print_epoch_summary(const EpochSummary* summary) {
     double entropy_mean = summary->entropy_sum / total_steps;
     double kl_mean = summary->kl_sum / total_steps;
 
-    printf("EPOCH SUMMARY: PPO loss: %.6f | Value loss: %.6f | Average Reward: %.4f | Value mean: %.4f | Value std: %.4f | Adv mean: %.4f | Adv std: %.4f | Ratio mean: %.4f | Unclipped mean: %.4f | Clipped %%: %.2f%% | Entropy: %.4f | KL: %.6f\n",
-        ppo_loss, value_loss, (summary->reward_sum/((double)(summary->minibatch_count * MINIBATCH_SIZE))), value_mean, value_std, adv_mean, adv_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, entropy_mean, kl_mean);
+    printf("EPOCH SUMMARY: PPO loss: %.6f | Value loss: %.6f | Average Reward (per env): %.4f | Value mean: %.4f | Value std: %.4f | Adv mean: %.4f | Adv std: %.4f | Ratio mean: %.4f | Unclipped mean: %.4f | Clipped %%: %.2f%% | Entropy: %.4f | KL: %.6f\n",
+        ppo_loss, value_loss, (summary->reward_sum/((double)(NUM_ENVS))), value_mean, value_std, adv_mean, adv_std, ratio_mean, unclipped_ratio_mean, clipped_percentage, entropy_mean, kl_mean);
 
     printf("Action distribution (%%): ");
     for (int j=0; j<POLICY_OUTPUT_SIZE; j++) {
-        double pct = (summary->action_counts[j] / total_steps) * 100.0;
+        double pct = (summary->action_counts[j] / (double)total_steps) * 100.0;
         printf("A%d: %.2f%% ", j, pct);
     }
     printf("\n");
@@ -237,7 +242,7 @@ double agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minib
     double dL_dw_p[MAX_OUTPUT_SIZE][HIDDEN_SIZE] = {0};
     double dL_db_p[MAX_OUTPUT_SIZE] = {0};
     double dL_dinput_p[MINIBATCH_SIZE][HIDDEN_SIZE] = {0};
-    policy_backward(&agent->policy_head, minibatch, new_probs, dL_dw_p, dL_db_p, dL_dinput_p, agent->entropy_coeff);
+    policy_backward(&agent->policy_head, minibatch, new_probs, dL_dw_p, dL_db_p, dL_dinput_p, agent->entropy_coeff, agent->temperature);
 
     // Rétropropagation à travers le LSTM
     double dL_dwf[HIDDEN_SIZE][COL_SIZE] = {0};
@@ -340,7 +345,6 @@ double agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS]
         summary->ppo_loss_sum += mb->ppo_loss;
         summary->value_loss_sum += mb->value_loss;
         for (int t=0; t<MINIBATCH_SIZE; t++) {
-            summary->reward_sum += mb->rewards[t];
             summary->value_sum += mb->values[t];
             summary->value_sq_sum += mb->values[t] * mb->values[t];
             summary->adv_sum += mb->advantages[t];
@@ -403,6 +407,15 @@ void train_epoch(Agent* agent, Optimizer* optim) {
 
     EpochSummary epoch_summary = {0};
 
+    // On accumule les recompenses de toutes les trajectoires une seule fois pour eviter les repetitions
+    double epoch_reward_sum = 0.0;
+    for (int env=0; env<NUM_ENVS; env++) {
+        for (int t=0; t<TRAJ_SIZE; t++) {
+            epoch_reward_sum += traj[env]->rewards[t];
+        }
+    }
+    epoch_summary.reward_sum = epoch_reward_sum;
+
     for (int ppo_epoch=0; ppo_epoch<PPO_EPOCHS; ppo_epoch++) {
         double mean_kl = agent_backward(agent, optim, traj, &epoch_summary);
         if (ppo_epoch + 1 >= KL_MIN_EPOCHS && mean_kl > KL_TARGET) {
@@ -421,13 +434,19 @@ void train_epoch(Agent* agent, Optimizer* optim) {
     }
 }
 
-void train(Agent* agent, Optimizer* optim, int epochs) {
-    for (int epoch=0; epoch<epochs; epoch++) {
+void train(Agent* agent, Optimizer* optim, int start_epoch, int epochs) {
+    mkdir("checkpoints", 0777);
+
+    for (int epoch=start_epoch; epoch<epochs; epoch++) {
         reset_flags();
         printf("\n========== Epoch %d/%d ==========\n", epoch+1, epochs);
         agent_set_schedule(agent, epoch);
         printf("Entropy coeff: %.6f | Temperature: %.6f\n", agent->entropy_coeff, agent->temperature);
         train_epoch(agent, optim);
+
+        // On enregistre le modèle
+        save_checkpoint("checkpoints/checkpoint.bin", agent, optim, epoch + 1);
+        printf("Checkpoint saved to checkpoints/checkpoint.bin at the end of Epoch %d\n", epoch + 1);
     }
 }
 
@@ -440,7 +459,26 @@ int main() {
     optim->epsilon = EPSILON_ADAM;
     optim->t = 0;
 
-    train(agent, optim, EPOCHS);
+    int start_epoch = 0;
+    char* checkpoint_path = "checkpoints/checkpoint.bin";
 
+    // On charge le modèle s'il existe
+    FILE* check_fp = fopen(checkpoint_path, "rb");
+    if (check_fp) {
+        fclose(check_fp);
+        if (load_checkpoint(checkpoint_path, agent, optim, &start_epoch) == 0) {
+            printf("Loaded checkpoint at Epoch %d...\n", start_epoch + 1);
+        } else {
+            printf("Failed to load checkpoint.\n");
+            start_epoch = 0;
+        }
+    } else {
+        printf("No existing checkpoint found.\n");
+    }
+
+    train(agent, optim, start_epoch, EPOCHS);
+
+    free(optim);
+    free(agent);
     return 0;
 }
