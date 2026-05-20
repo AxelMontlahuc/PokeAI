@@ -45,6 +45,7 @@ void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]);
 double agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibatch);
 double agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS], EpochSummary* summary);
 void recompute_probs(Agent* agent, Minibatch* current_minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE]);
+void recompute_values(Agent* agent, Minibatch* current_minibatch, double new_values[MINIBATCH_SIZE]);
 void train_epoch(Agent* agent, Optimizer* optim);
 void train(Agent* agent, Optimizer* optim, int start_epoch, int epochs);
 double get_entropy_coeff();

@@ -190,6 +190,14 @@ void recompute_probs(Agent* agent, Minibatch* current_minibatch, double new_prob
     }
 }
 
+void recompute_values(Agent* agent, Minibatch* current_minibatch, double new_values[MINIBATCH_SIZE]) {
+    for (int t=0; t<MINIBATCH_SIZE; t++) {
+        double value_logits[VALUE_OUTPUT_SIZE];
+        dense_forward(&agent->value_head, current_minibatch->hidden_states[t], value_logits);
+        new_values[t] = value_logits[0];
+    }
+}
+
 double compute_std(double array[MINIBATCH_SIZE], double mean) {
     double variance = 0;
 
@@ -228,6 +236,7 @@ void print_epoch_summary(EpochSummary* summary) {
 }
 
 double agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibatch) {
+    lstm_recompute_minibatch(&agent->lstm, minibatch);
     // Rétropropagation de la value head/critic
     double returns[MINIBATCH_SIZE];
     for (int t=0; t<MINIBATCH_SIZE; t++) {
@@ -237,7 +246,10 @@ double agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minib
     double dL_dw_v[MAX_OUTPUT_SIZE][HIDDEN_SIZE] = {0};
     double dL_db_v[MAX_OUTPUT_SIZE] = {0};
     double dL_dinput_v[MINIBATCH_SIZE][HIDDEN_SIZE] = {0};
-    minibatch->value_loss = value_backward(&agent->value_head, minibatch->values, returns, minibatch->hidden_states, dL_dw_v, dL_db_v, dL_dinput_v);
+    double new_values[MINIBATCH_SIZE];
+    recompute_values(agent, minibatch, new_values);
+    minibatch->value_loss = value_backward(&agent->value_head, new_values, returns, minibatch->hidden_states, dL_dw_v, dL_db_v, dL_dinput_v);
+    memcpy(minibatch->values, new_values, sizeof(double) * MINIBATCH_SIZE);
 
     // Rétropropagation de la policy head/actor
     double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE];
@@ -294,46 +306,55 @@ double agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS]
     Minibatch* minibatches[num_minibatches];
 
     // Création et mélange des minibatchs
-    int idx[num_minibatches];
-    for (int i=0; i<num_minibatches; i++) {
-        idx[i] = i;
+    int total_seqs = NUM_ENVS * (TRAJ_SIZE / SEQ_LEN);
+    int seq_idx[total_seqs];
+    for (int i=0; i<total_seqs; i++) {
+        seq_idx[i] = i;
+    }
+
+    for (int i=0; i<total_seqs; i++) {
+        int range = total_seqs - i;
+        int j = i + (rand() % range);
+        int t = seq_idx[j];
+        seq_idx[j] = seq_idx[i];
+        seq_idx[i] = t;
     }
 
     for (int i=0; i<num_minibatches; i++) {
-        int j = i + rand() / (RAND_MAX / (num_minibatches - i) + 1);
-        int t = idx[j];
-        idx[j] = idx[i];
-        idx[i] = t;
-    }
-
-    for (int i=0; i<num_minibatches; i++) {
-        int num_traj = idx[i] / (TRAJ_SIZE / MINIBATCH_SIZE);
-        int num_traj_minibatch = idx[i] % (TRAJ_SIZE / MINIBATCH_SIZE);
-        int start = num_traj_minibatch * MINIBATCH_SIZE;
-
         minibatches[i] = malloc(sizeof(Minibatch));
-        memcpy(minibatches[i]->states, &traj[num_traj]->states[start], sizeof(minibatches[i]->states));
-        memcpy(minibatches[i]->hidden_states, &traj[num_traj]->hidden_states[start], sizeof(minibatches[i]->hidden_states));
-        memcpy(minibatches[i]->z, &traj[num_traj]->z[start], sizeof(minibatches[i]->z));
-        memcpy(minibatches[i]->f, &traj[num_traj]->f[start], sizeof(minibatches[i]->f));
-        memcpy(minibatches[i]->i, &traj[num_traj]->i[start], sizeof(minibatches[i]->i));
-        memcpy(minibatches[i]->g, &traj[num_traj]->g[start], sizeof(minibatches[i]->g));
-        memcpy(minibatches[i]->o, &traj[num_traj]->o[start], sizeof(minibatches[i]->o));
-        memcpy(minibatches[i]->c, &traj[num_traj]->c[start], sizeof(minibatches[i]->c));
-        // On trouve la bonne cellule au début du minibatch
-        if (start > 0 && traj[num_traj]->done[start-1] == 0) {
-            memcpy(minibatches[i]->c_ini, traj[num_traj]->c[start-1], sizeof(minibatches[i]->c_ini));
-        } else { // Sinon on initialise la cellule à 0
-            for (int j=0; j<HIDDEN_SIZE; j++) {
-                minibatches[i]->c_ini[j] = 0.0;
+        for (int s=0; s<NUM_SEQS; s++) {
+            int current_seq_idx = seq_idx[i * NUM_SEQS + s];
+            int num_traj = current_seq_idx / (TRAJ_SIZE / SEQ_LEN);
+            int seq_in_env = current_seq_idx % (TRAJ_SIZE / SEQ_LEN);
+            int start = seq_in_env * SEQ_LEN;
+            int mb_offset = s * SEQ_LEN;
+
+            memcpy(&minibatches[i]->states[mb_offset], &traj[num_traj]->states[start], sizeof(int) * SEQ_LEN * INPUT_SIZE);
+            memcpy(&minibatches[i]->hidden_states[mb_offset], &traj[num_traj]->hidden_states[start], sizeof(double) * SEQ_LEN * HIDDEN_SIZE);
+            memcpy(&minibatches[i]->z[mb_offset], &traj[num_traj]->z[start], sizeof(double) * SEQ_LEN * COL_SIZE);
+            memcpy(&minibatches[i]->f[mb_offset], &traj[num_traj]->f[start], sizeof(double) * SEQ_LEN * HIDDEN_SIZE);
+            memcpy(&minibatches[i]->i[mb_offset], &traj[num_traj]->i[start], sizeof(double) * SEQ_LEN * HIDDEN_SIZE);
+            memcpy(&minibatches[i]->g[mb_offset], &traj[num_traj]->g[start], sizeof(double) * SEQ_LEN * HIDDEN_SIZE);
+            memcpy(&minibatches[i]->o[mb_offset], &traj[num_traj]->o[start], sizeof(double) * SEQ_LEN * HIDDEN_SIZE);
+            memcpy(&minibatches[i]->c[mb_offset], &traj[num_traj]->c[start], sizeof(double) * SEQ_LEN * HIDDEN_SIZE);
+
+            if (start > 0 && traj[num_traj]->done[start-1] == 0) {
+                memcpy(minibatches[i]->c_ini[s], traj[num_traj]->c[start-1], sizeof(double) * HIDDEN_SIZE);
+                memcpy(minibatches[i]->h_ini[s], traj[num_traj]->hidden_states[start-1], sizeof(double) * HIDDEN_SIZE);
+            } else {
+                for (int j=0; j<HIDDEN_SIZE; j++) {
+                    minibatches[i]->c_ini[s][j] = 0.0;
+                    minibatches[i]->h_ini[s][j] = 0.0;
+                }
             }
+
+            memcpy(&minibatches[i]->actions[mb_offset], &traj[num_traj]->actions[start], sizeof(int) * SEQ_LEN);
+            memcpy(&minibatches[i]->rewards[mb_offset], &traj[num_traj]->rewards[start], sizeof(double) * SEQ_LEN);
+            memcpy(&minibatches[i]->probs[mb_offset], &traj[num_traj]->probs[start], sizeof(double) * SEQ_LEN * POLICY_OUTPUT_SIZE);
+            memcpy(&minibatches[i]->values[mb_offset], &traj[num_traj]->values[start], sizeof(double) * SEQ_LEN);
+            memcpy(&minibatches[i]->advantages[mb_offset], &traj[num_traj]->advantages[start], sizeof(double) * SEQ_LEN);
+            memcpy(&minibatches[i]->done[mb_offset], &traj[num_traj]->done[start], sizeof(int) * SEQ_LEN);
         }
-        memcpy(minibatches[i]->actions, &traj[num_traj]->actions[start], sizeof(minibatches[i]->actions));
-        memcpy(minibatches[i]->rewards, &traj[num_traj]->rewards[start], sizeof(minibatches[i]->rewards));
-        memcpy(minibatches[i]->probs, &traj[num_traj]->probs[start], sizeof(minibatches[i]->probs));
-        memcpy(minibatches[i]->values, &traj[num_traj]->values[start], sizeof(minibatches[i]->values));
-        memcpy(minibatches[i]->advantages, &traj[num_traj]->advantages[start], sizeof(minibatches[i]->advantages));
-        memcpy(minibatches[i]->done, &traj[num_traj]->done[start], sizeof(minibatches[i]->done));
     }
 
     // Rétropropagation

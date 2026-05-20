@@ -31,7 +31,8 @@ struct Minibatch {
     double g[MINIBATCH_SIZE][HIDDEN_SIZE]; // On note g la porte candidat pour éviter la confusion avec la mémoire à long-terme (cellule) c
     double o[MINIBATCH_SIZE][HIDDEN_SIZE];
     double c[MINIBATCH_SIZE][HIDDEN_SIZE]; // Mémoire à long terme (cellule) du LSTM
-    double c_ini[HIDDEN_SIZE];             // Requis pour la rétropropagation du LSTM
+    double c_ini[NUM_SEQS][HIDDEN_SIZE];
+    double h_ini[NUM_SEQS][HIDDEN_SIZE];
     int actions[MINIBATCH_SIZE];
     double rewards[MINIBATCH_SIZE];
     double probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE];
