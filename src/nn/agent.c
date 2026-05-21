@@ -249,6 +249,18 @@ double agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minib
     double new_values[MINIBATCH_SIZE];
     recompute_values(agent, minibatch, new_values);
     minibatch->value_loss = value_backward(&agent->value_head, new_values, returns, minibatch->hidden_states, dL_dw_v, dL_db_v, dL_dinput_v);
+    // On partage le gradient en deux (une moitié pour le critic, une moitié pour l'actor)
+    for (int i = 0; i < agent->value_head.output_size; i++) {
+        for (int j = 0; j < agent->value_head.input_size; j++) {
+            dL_dw_v[i][j] *= 0.5;
+        }
+        dL_db_v[i] *= 0.5;
+    }
+    for (int t = 0; t < MINIBATCH_SIZE; t++) {
+        for (int j = 0; j < HIDDEN_SIZE; j++) {
+            dL_dinput_v[t][j] *= 0.5;
+        }
+    }
     memcpy(minibatch->values, new_values, sizeof(double) * MINIBATCH_SIZE);
 
     // Rétropropagation de la policy head/actor
@@ -271,6 +283,67 @@ double agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minib
     double dL_dbo[HIDDEN_SIZE] = {0};
 
     lstm_backward(&agent->lstm, minibatch, dL_dinput_v, dL_dinput_p, minibatch->c_ini, dL_dwf, dL_dwi, dL_dwc, dL_dwo, dL_dbf, dL_dbi, dL_dbc, dL_dbo);
+
+    // Clipping des gradients pour éviter qu'ils explosent (indépendamment pour le critic et l'actor pour que l'un ne prédomine pas sur l'autre)
+    double policy_grad_norm_sq = 0.0;
+    for (int i = 0; i < agent->policy_head.output_size; i++) {
+        for (int j = 0; j < agent->policy_head.input_size; j++) {
+            policy_grad_norm_sq += dL_dw_p[i][j] * dL_dw_p[i][j];
+        }
+        policy_grad_norm_sq += dL_db_p[i] * dL_db_p[i];
+    }
+    for (int i = 0; i < HIDDEN_SIZE; i++) {
+        for (int j = 0; j < COL_SIZE; j++) {
+            policy_grad_norm_sq += dL_dwf[i][j] * dL_dwf[i][j];
+            policy_grad_norm_sq += dL_dwi[i][j] * dL_dwi[i][j];
+            policy_grad_norm_sq += dL_dwc[i][j] * dL_dwc[i][j];
+            policy_grad_norm_sq += dL_dwo[i][j] * dL_dwo[i][j];
+        }
+        policy_grad_norm_sq += dL_dbf[i] * dL_dbf[i];
+        policy_grad_norm_sq += dL_dbi[i] * dL_dbi[i];
+        policy_grad_norm_sq += dL_dbc[i] * dL_dbc[i];
+        policy_grad_norm_sq += dL_dbo[i] * dL_dbo[i];
+    }
+    double policy_grad_norm = sqrt(policy_grad_norm_sq);
+    if (policy_grad_norm > MAX_GRAD_NORM) {
+        double scale = MAX_GRAD_NORM / (policy_grad_norm + 1e-8);
+        for (int i = 0; i < agent->policy_head.output_size; i++) {
+            for (int j = 0; j < agent->policy_head.input_size; j++) {
+                dL_dw_p[i][j] *= scale;
+            }
+            dL_db_p[i] *= scale;
+        }
+        for (int i = 0; i < HIDDEN_SIZE; i++) {
+            for (int j = 0; j < COL_SIZE; j++) {
+                dL_dwf[i][j] *= scale;
+                dL_dwi[i][j] *= scale;
+                dL_dwc[i][j] *= scale;
+                dL_dwo[i][j] *= scale;
+            }
+            dL_dbf[i] *= scale;
+            dL_dbi[i] *= scale;
+            dL_dbc[i] *= scale;
+            dL_dbo[i] *= scale;
+        }
+    }
+
+    double value_grad_norm_sq = 0.0;
+    for (int i = 0; i < agent->value_head.output_size; i++) {
+        for (int j = 0; j < agent->value_head.input_size; j++) {
+            value_grad_norm_sq += dL_dw_v[i][j] * dL_dw_v[i][j];
+        }
+        value_grad_norm_sq += dL_db_v[i] * dL_db_v[i];
+    }
+    double value_grad_norm = sqrt(value_grad_norm_sq);
+    if (value_grad_norm > MAX_GRAD_NORM) {
+        double scale = MAX_GRAD_NORM / (value_grad_norm + 1e-8);
+        for (int i = 0; i < agent->value_head.output_size; i++) {
+            for (int j = 0; j < agent->value_head.input_size; j++) {
+                dL_dw_v[i][j] *= scale;
+            }
+            dL_db_v[i] *= scale;
+        }
+    }
 
     // Mise à jour des poids avec Adam
     optim->t += 1;

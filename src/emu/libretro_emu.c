@@ -35,6 +35,13 @@ static struct retro_memory_descriptor *g_memmap_desc = NULL;
 static const uint8_t *g_sysram = NULL;
 static size_t g_sysram_size = 0;
 
+// Emerald stores normal vars in gSaveBlock1Ptr->vars. A var's address is:
+// gSaveBlock1Ptr + 0x139C + ((varId - 0x4000) * 2).
+#define EMERALD_GSAVEBLOCK1PTR_ADDR 0x03005D8Cu
+#define EMERALD_SAVEBLOCK1_VARS_OFFSET 0x139Cu
+#define EMERALD_VARS_START 0x4000u
+#define EMERALD_VARS_END 0x40FFu
+
 // When non-zero we suppress libretro/core output (log callback and
 // temporarily redirect stdout/stderr around core-run calls).
 static int g_suppress_core_output = 0;
@@ -408,15 +415,12 @@ static void refresh_memory_cache(void) {
 }
 
 static inline int sysram_read_offset(uint32_t addr, size_t nbytes, size_t *offset) {
-	const uint32_t bases[2] = { 0x02000000u, 0x03000000u };
-	for (int b = 0; b < 2; ++b) {
-		uint32_t base = bases[b];
-		if (addr >= base) {
-			size_t off = (size_t)(addr - base);
-			if (off + nbytes <= g_sysram_size) {
-				*offset = off;
-				return 1;
-			}
+	const uint32_t base = 0x02000000u;
+	if (addr >= base) {
+		size_t off = (size_t)(addr - base);
+		if (off + nbytes <= g_sysram_size) {
+			*offset = off;
+			return 1;
 		}
 	}
 	return 0;
@@ -522,16 +526,13 @@ long gba_ram(uint32_t addr, size_t nbytes) {
 	}
 	if (!g_sysram || g_sysram_size == 0) return -1;
 	const uint8_t *base = g_sysram;
-	const uint32_t bases[2] = { 0x02000000u, 0x03000000u };
-	for (int b = 0; b < 2; ++b) {
-		uint32_t A = bases[b];
-		if (addr >= A) {
-			size_t off = (size_t)(addr - A);
-			if (off + nbytes <= g_sysram_size) {
-				unsigned long val = 0; const uint8_t *p = base + off;
-				for (size_t i = 0; i < nbytes; ++i) val |= ((unsigned long)p[i]) << (8*i);
-				return (long)val;
-			}
+	const uint32_t A = 0x02000000u;
+	if (addr >= A) {
+		size_t off = (size_t)(addr - A);
+		if (off + nbytes <= g_sysram_size) {
+			unsigned long val = 0; const uint8_t *p = base + off;
+			for (size_t i = 0; i < nbytes; ++i) val |= ((unsigned long)p[i]) << (8*i);
+			return (long)val;
 		}
 	}
 
@@ -805,4 +806,22 @@ void gba_state(int state[INPUT_SIZE]) {
 			state[inter_idx] = 0;
 		}
 	}
+}
+
+int get_emerald_var(uint16_t var_id) {
+	if (var_id < EMERALD_VARS_START || var_id > EMERALD_VARS_END) {
+		return 0;
+	}
+
+	uint32_t saveblock1 = read32(EMERALD_GSAVEBLOCK1PTR_ADDR);
+	if (saveblock1 < 0x02000000u || saveblock1 >= 0x02040000u) {
+		return 0;
+	}
+
+	uint32_t offset = EMERALD_SAVEBLOCK1_VARS_OFFSET + ((uint32_t)var_id - EMERALD_VARS_START) * 2u;
+	return (int)read16(saveblock1 + offset);
+}
+
+int get_littleroot_intro_state(void) {
+	return get_emerald_var(0x4092u);
 }

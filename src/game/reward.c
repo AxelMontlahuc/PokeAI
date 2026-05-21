@@ -1,58 +1,43 @@
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "config.h"
 #include "reward.h"
+#include "libretro_emu.h"
 
 ExploredTile visited_tiles[TRAJ_SIZE];
 int visited_tiles_count = 0;
 
-// Flags
-bool PLAYER_HOUSE_FLAG = false;
-bool PLAYER_ROOM_FLAG = false;
-bool PLAYER_HOUSE_2_FLAG = false;
-bool LITTLEROOT_FLAG = false;
-bool RIVAL_HOUSE_FLAG = false;
-bool RIVAL_ROOM_FLAG = false;
-bool RIVAL_HOUSE_2_FLAG = false;
-bool LITTLEROOT_2_FLAG = false;
-bool ROUTE_101_FLAG = false;
-bool LABORATORY_FLAG = false;
-bool LITTLEROOT_3_FLAG = false;
-bool ROUTE_101_2_FLAG = false;
-bool OLDALE_FLAG = false;
-bool ROUTE_103_FLAG = false;      // Pas encore implémenté à partir d'ici
-bool LABORATORY_2_FLAG = false;
-bool ROUTE_102_FLAG = false;
-bool PETALBURG_FLAG = false;
-bool ROUTE_104_FLAG = false;
-bool PETALBURG_WOODS_FLAG = false;
-bool RUSTBORO_FLAG = false;
+typedef struct {
+    uint16_t var_id;
+    uint8_t max_state;
+} InternalStateVarReward;
+
+enum {
+    INTERNAL_STATE_VAR_COUNT = 6,
+    INTERNAL_STATE_MAX_STATE = 7
+};
+
+#define INTERNAL_STATE_REWARD 1.5
+
+static const InternalStateVarReward INTERNAL_STATE_VARS[INTERNAL_STATE_VAR_COUNT] = {
+    {0x4092, 7}, // VAR_LITTLEROOT_INTRO_STATE: 1..7
+    {0x4084, 5}, // VAR_BIRCH_LAB_STATE: 2..5, 1 never occurs
+    {0x4060, 3}, // VAR_ROUTE101_STATE: 1..3
+    {0x4050, 4}, // VAR_LITTLEROOT_TOWN_STATE: 1..4
+    {0x408D, 4}, // VAR_LITTLEROOT_RIVAL_STATE: 2..4, 1 never occurs
+    {0x40C7, 2}, // VAR_OLDALE_RIVAL_STATE: 1..2
+};
+
+bool INTERNAL_STATE_VAR_STATES_SEEN[INTERNAL_STATE_VAR_COUNT][INTERNAL_STATE_MAX_STATE + 1] = {{false}};
 
 void reset_flags() {
-    PLAYER_HOUSE_FLAG = false;
-    PLAYER_ROOM_FLAG = false;
-    PLAYER_HOUSE_2_FLAG = false;
-    LITTLEROOT_FLAG = false;
-    RIVAL_HOUSE_FLAG = false;
-    RIVAL_ROOM_FLAG = false;
-    RIVAL_HOUSE_2_FLAG = false;
-    LITTLEROOT_2_FLAG = false;
-    ROUTE_101_FLAG = false;
-    LABORATORY_FLAG = false;
-    LITTLEROOT_3_FLAG = false;
-    ROUTE_101_2_FLAG = false;
-    OLDALE_FLAG = false;
-    ROUTE_103_FLAG = false;
-    LABORATORY_2_FLAG = false;
-    ROUTE_102_FLAG = false;
-    PETALBURG_FLAG = false;
-    ROUTE_104_FLAG = false;
-    PETALBURG_WOODS_FLAG = false;
-    RUSTBORO_FLAG = false;
-
+    memset(INTERNAL_STATE_VAR_STATES_SEEN, 0, sizeof(INTERNAL_STATE_VAR_STATES_SEEN));
+    
     visited_tiles_count = 0;
 }
 
@@ -85,6 +70,31 @@ int get_party_level_sum(int state[INPUT_SIZE]) {
     return level_sum;
 }
 
+double reward_internal_state_var(int index) {
+    const InternalStateVarReward *var = &INTERNAL_STATE_VARS[index];
+    int state = get_emerald_var(var->var_id);
+
+    if (state <= 0 || state > var->max_state) {
+        return 0.0;
+    }
+    if (INTERNAL_STATE_VAR_STATES_SEEN[index][state]) {
+        return 0.0;
+    }
+
+    INTERNAL_STATE_VAR_STATES_SEEN[index][state] = true;
+    return INTERNAL_STATE_REWARD;
+}
+
+double reward_internal_state_vars(void) {
+    double r = 0.0;
+
+    for (int i = 0; i < INTERNAL_STATE_VAR_COUNT; i++) {
+        r += reward_internal_state_var(i);
+    }
+
+    return r;
+}
+
 double reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]) {
     double r = STEP_PENALTY;
 
@@ -107,62 +117,8 @@ double reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]) {
         r += (double)level_diff * WEIGHT_LEVEL_UP;
     }
 
-    // --- 3. Récompense de flags
-    if (!PLAYER_HOUSE_FLAG && new_map == 1) {
-        PLAYER_HOUSE_FLAG = true;
-        r += 1;
-    }
-    
-    if (!PLAYER_ROOM_FLAG && new_map == 257) {
-        PLAYER_ROOM_FLAG = true;
-        r += 1.7;
-    }
-
-    if (PLAYER_ROOM_FLAG && !PLAYER_HOUSE_2_FLAG && new_map == 1) {
-        PLAYER_HOUSE_2_FLAG = true;
-        r += 1.2;
-    }
-
-    if (PLAYER_HOUSE_2_FLAG && !LITTLEROOT_FLAG && new_map == 2304) {
-        LITTLEROOT_FLAG = true;
-        r += 1.7;
-    }
-    if (!RIVAL_HOUSE_FLAG && new_map == 513) {
-        RIVAL_HOUSE_FLAG = true;
-        r += 3.0;
-    }
-    if (!RIVAL_ROOM_FLAG && new_map == 769) {
-        RIVAL_ROOM_FLAG = true;
-        r += 1.6;
-    }
-    if (RIVAL_ROOM_FLAG && !RIVAL_HOUSE_2_FLAG && new_map == 513) {
-        RIVAL_HOUSE_2_FLAG = true;
-        r += 1.6;
-    }
-    if (RIVAL_HOUSE_2_FLAG && !LITTLEROOT_2_FLAG && new_map == 2304) {
-        LITTLEROOT_2_FLAG = true;
-        r += 1.8;
-    }
-    if (!ROUTE_101_FLAG && new_map == 4096) {
-        ROUTE_101_FLAG = true;
-        r += 3.2;
-    }
-    if (ROUTE_101_FLAG && !LABORATORY_FLAG && new_map == 1025) {
-        LABORATORY_FLAG = true;
-        r += 2.3;
-    }
-    if (LABORATORY_FLAG && !LITTLEROOT_3_FLAG && new_map == 2304) {
-        LITTLEROOT_3_FLAG = true;
-        r += 1.8;
-    }
-    if (LITTLEROOT_3_FLAG && !ROUTE_101_2_FLAG && new_map == 4096) {
-        ROUTE_101_2_FLAG = true;
-        r += 2.5;
-    }
-    if (!OLDALE_FLAG && new_map == 2560) {
-        OLDALE_FLAG = true;
-        r += 4.0;
-    }
+    // --- 3. Récompense de progression interne
+    r += reward_internal_state_vars();
 
     return r;
 }
