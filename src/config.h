@@ -9,9 +9,9 @@
 #define COL_SIZE (INPUT_SIZE + HIDDEN_SIZE)  // INPUT_SIZE + HIDDEN_SIZE
 
 #define EPOCHS 500
-#define NUM_ENVS 8
+#define NUM_ENVS 16
 #define PPO_EPOCHS 6
-#define TRAJ_SIZE 1024
+#define TRAJ_SIZE 2048
 #define BATCH_SIZE (TRAJ_SIZE * NUM_ENVS)
 #define MINIBATCH_SIZE 256
 #define SEQ_LEN 32
@@ -41,7 +41,7 @@
 // Système de température
 #define TEMP_INIT 1.0
 #define TEMP_MIN 1.0
-#define TEMP_DECAY_EPOCHS 0
+#define TEMP_DECAY_EPOCHS 20
 
 // Récompenses
 #define WEIGHT_EXPLORATION 0.0    // Récompense par nouvelle tile

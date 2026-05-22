@@ -136,8 +136,8 @@ void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]) {
             gba_set_core_silent(1); 
             gba_set_press_timing(1, 20);
             gba_set_video_enabled(0);
-            gba_set_frameskip(9);
-            gba_create("../libretro-super/dist/unix/mgba_libretro.so", "rom/pokemon.gba");
+            gba_set_frameskip(19);
+            gba_create("../libretro-super/libretro-mgba/mgba_libretro.so", "rom/pokemon.gba");
             gba_reset("rom/start.sav");
 
             char screen_path[64];
@@ -178,7 +178,14 @@ void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]) {
 
     // Attendre la fin de tous les processus enfants
     for (int env=0; env<NUM_ENVS; env++) {
-        waitpid(pids[env], NULL, 0);
+        int status;
+        waitpid(pids[env], &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            fprintf(stderr, "Fatal error: Worker %d terminated abnormally (status code %d).\n"
+                            "This usually happens when the ROM 'rom/pokemon.gba' or the emulator core '../libretro-super/...' cannot be found.\n"
+                            "Please check your Codespace setup.\n", env, WEXITSTATUS(status));
+            exit(1);
+        }
     }
 }
 
@@ -471,34 +478,11 @@ double agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS]
 void train_epoch(Agent* agent, Optimizer* optim) {
     Trajectory* traj[NUM_ENVS];
     for (int env=0; env<NUM_ENVS; env++) {
-        // Allocation de la mémoire partagée (nom unique par worker)
-        char shm_name[64];
-        snprintf(shm_name, sizeof(shm_name), "/worker_%d", env);
-        
-        // Nettoie d'éventuelles mémoires partagées résiduelles de runs précédents
-        shm_unlink(shm_name);
-        
-        // Crée une mémoire partagée neuve
-        int shm_fd = shm_open(shm_name, O_CREAT | O_EXCL | O_RDWR, 0666);
-        if (shm_fd < 0) {
-            perror("shm_open");
-            exit(1);
-        }
-        if (ftruncate(shm_fd, sizeof(Trajectory)) != 0) {
-            perror("ftruncate");
-            close(shm_fd);
-            shm_unlink(shm_name);
-            exit(1);
-        }
-
-        traj[env] = mmap(NULL, sizeof(Trajectory), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+        traj[env] = mmap(NULL, sizeof(Trajectory), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
         if (traj[env] == MAP_FAILED) {
-            perror("mmap");
-            close(shm_fd);
-            shm_unlink(shm_name);
+            perror("mmap MAP_ANONYMOUS");
             exit(1);
         }
-        close(shm_fd);
     }
 
     agent_forward(agent, traj);
@@ -525,10 +509,7 @@ void train_epoch(Agent* agent, Optimizer* optim) {
 
     // Libération de la mémoire partagée
     for (int env=0; env<NUM_ENVS; env++) {
-        char shm_name[64];
-        snprintf(shm_name, sizeof(shm_name), "/worker_%d", env);
         munmap(traj[env], sizeof(Trajectory));
-        shm_unlink(shm_name);
     }
 }
 
