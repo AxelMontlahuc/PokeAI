@@ -12,7 +12,7 @@ typedef struct {
     int y;
 } ExploredTile;
 
-double reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]);
+float reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]);
 void reset_flags(void);
 bool is_done(void);
 

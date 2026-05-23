@@ -17,7 +17,7 @@
 #include "libretro.h"
 #include "libretro_emu.h"
 
-static double g_nominal_fps = 60.0;
+static float g_nominal_fps = 60.0f;
 static unsigned long long g_run_count = 0;
 
 static int g_hold[RETRO_DEVICE_ID_JOYPAD_R3+1] = {0};
@@ -34,6 +34,12 @@ static struct retro_memory_map g_memmap = {0};
 static struct retro_memory_descriptor *g_memmap_desc = NULL;
 static const uint8_t *g_sysram = NULL;
 static size_t g_sysram_size = 0;
+static const uint8_t *g_rom_ptr = NULL;
+static size_t g_rom_size = 0;
+static uint32_t g_rom_start = 0;
+static const uint8_t *g_iram_ptr = NULL;
+static size_t g_iram_size = 0;
+static uint32_t g_iram_start = 0;
 
 // Emerald stores normal vars in gSaveBlock1Ptr->vars. A var's address is:
 // gSaveBlock1Ptr + 0x139C + ((varId - 0x4000) * 2).
@@ -142,13 +148,29 @@ static bool core_environment(unsigned cmd, void *data) {
 		struct retro_variable *var = (struct retro_variable *)data;
 		if (var && var->key) {
 			if (strcmp(var->key, "mgba_frameskip") == 0) {
+				var->value = (g_frameskip > 0) ? "fixed_interval" : "none";
+				return true;
+			}
+			if (strcmp(var->key, "mgba_frameskip_interval") == 0) {
 				static char fs_str[16];
 				snprintf(fs_str, sizeof(fs_str), "%d", g_frameskip);
 				var->value = fs_str;
 				return true;
 			}
 			if (strcmp(var->key, "mgba_idle_optimization") == 0) {
-				var->value = (g_frameskip > 0) ? "Detect and Remove" : "Don't Remove";
+				var->value = "Detect and Remove";
+				return true;
+			}
+			if (strcmp(var->key, "mgba_color_correction") == 0) {
+				var->value = "OFF";
+				return true;
+			}
+			if (strcmp(var->key, "mgba_interframe_blending") == 0) {
+				var->value = "OFF";
+				return true;
+			}
+			if (strcmp(var->key, "mgba_audio_low_pass_filter") == 0) {
+				var->value = "disabled";
 				return true;
 			}
 		}
@@ -340,7 +362,7 @@ static void core_load_game(const char *filename) {
 		die("The core failed to load the content.");
 
 	g_retro.retro_get_system_av_info(&av);
-	if (av.timing.fps > 0.0) g_nominal_fps = av.timing.fps;
+	if (av.timing.fps > 0.0) g_nominal_fps = (float)(av.timing.fps);
 
 	return;
 
@@ -412,6 +434,32 @@ static void core_apply_output_state(void) {
 static void refresh_memory_cache(void) {
 	g_sysram = (const uint8_t *)g_retro.retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM);
 	g_sysram_size = g_retro.retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+
+	g_rom_ptr = NULL;
+	g_rom_size = 0;
+	g_rom_start = 0;
+
+	g_iram_ptr = NULL;
+	g_iram_size = 0;
+	g_iram_start = 0;
+
+	if (g_memmap.descriptors && g_memmap.num_descriptors) {
+		const struct retro_memory_descriptor *d = g_memmap.descriptors;
+		for (unsigned i = 0; i < g_memmap.num_descriptors; ++i) {
+			if (!d[i].ptr || d[i].len == 0) continue;
+			uint64_t start = (uint64_t)d[i].start;
+			uint64_t end = start + (uint64_t)d[i].len;
+			if (0x08000000u >= start && 0x08000000u < end) {
+				g_rom_ptr = (const uint8_t *)d[i].ptr;
+				g_rom_size = d[i].len;
+				g_rom_start = (uint32_t)start;
+			} else if (0x03000000u >= start && 0x03000000u < end) {
+				g_iram_ptr = (const uint8_t *)d[i].ptr;
+				g_iram_size = d[i].len;
+				g_iram_start = (uint32_t)start;
+			}
+		}
+	}
 }
 
 static inline int sysram_read_offset(uint32_t addr, size_t nbytes, size_t *offset) {
@@ -426,11 +474,45 @@ static inline int sysram_read_offset(uint32_t addr, size_t nbytes, size_t *offse
 	return 0;
 }
 
+static inline int rom_read_offset(uint32_t addr, size_t nbytes, size_t *offset) {
+	if (g_rom_ptr && g_rom_size && addr >= g_rom_start) {
+		size_t off = (size_t)(addr - g_rom_start);
+		if (off + nbytes <= g_rom_size) {
+			*offset = off;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static inline int iram_read_offset(uint32_t addr, size_t nbytes, size_t *offset) {
+	if (g_iram_ptr && g_iram_size && addr >= g_iram_start) {
+		size_t off = (size_t)(addr - g_iram_start);
+		if (off + nbytes <= g_iram_size) {
+			*offset = off;
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static inline uint8_t fast_read8(uint32_t addr, int *ok) {
 	size_t off = 0;
-	if (g_sysram && g_sysram_size && sysram_read_offset(addr, 1, &off)) {
-		if (ok) *ok = 1;
-		return g_sysram[off];
+	if (addr >= 0x08000000u) {
+		if (rom_read_offset(addr, 1, &off)) {
+			if (ok) *ok = 1;
+			return g_rom_ptr[off];
+		}
+	} else if (addr >= 0x03000000u) {
+		if (iram_read_offset(addr, 1, &off)) {
+			if (ok) *ok = 1;
+			return g_iram_ptr[off];
+		}
+	} else {
+		if (g_sysram && g_sysram_size && sysram_read_offset(addr, 1, &off)) {
+			if (ok) *ok = 1;
+			return g_sysram[off];
+		}
 	}
 	if (ok) *ok = 0;
 	return 0;
@@ -438,11 +520,27 @@ static inline uint8_t fast_read8(uint32_t addr, int *ok) {
 
 static inline uint16_t fast_read16(uint32_t addr, int *ok) {
 	size_t off = 0;
-	if (g_sysram && g_sysram_size && sysram_read_offset(addr, 2, &off)) {
-		uint16_t value;
-		memcpy(&value, g_sysram + off, sizeof(value));
-		if (ok) *ok = 1;
-		return value;
+	if (addr >= 0x08000000u) {
+		if (rom_read_offset(addr, 2, &off)) {
+			uint16_t value;
+			memcpy(&value, g_rom_ptr + off, sizeof(value));
+			if (ok) *ok = 1;
+			return value;
+		}
+	} else if (addr >= 0x03000000u) {
+		if (iram_read_offset(addr, 2, &off)) {
+			uint16_t value;
+			memcpy(&value, g_iram_ptr + off, sizeof(value));
+			if (ok) *ok = 1;
+			return value;
+		}
+	} else {
+		if (g_sysram && g_sysram_size && sysram_read_offset(addr, 2, &off)) {
+			uint16_t value;
+			memcpy(&value, g_sysram + off, sizeof(value));
+			if (ok) *ok = 1;
+			return value;
+		}
 	}
 	if (ok) *ok = 0;
 	return 0;
@@ -450,11 +548,27 @@ static inline uint16_t fast_read16(uint32_t addr, int *ok) {
 
 static inline uint32_t fast_read32(uint32_t addr, int *ok) {
 	size_t off = 0;
-	if (g_sysram && g_sysram_size && sysram_read_offset(addr, 4, &off)) {
-		uint32_t value;
-		memcpy(&value, g_sysram + off, sizeof(value));
-		if (ok) *ok = 1;
-		return value;
+	if (addr >= 0x08000000u) {
+		if (rom_read_offset(addr, 4, &off)) {
+			uint32_t value;
+			memcpy(&value, g_rom_ptr + off, sizeof(value));
+			if (ok) *ok = 1;
+			return value;
+		}
+	} else if (addr >= 0x03000000u) {
+		if (iram_read_offset(addr, 4, &off)) {
+			uint32_t value;
+			memcpy(&value, g_iram_ptr + off, sizeof(value));
+			if (ok) *ok = 1;
+			return value;
+		}
+	} else {
+		if (g_sysram && g_sysram_size && sysram_read_offset(addr, 4, &off)) {
+			uint32_t value;
+			memcpy(&value, g_sysram + off, sizeof(value));
+			if (ok) *ok = 1;
+			return value;
+		}
 	}
 	if (ok) *ok = 0;
 	return 0;
@@ -481,7 +595,7 @@ static inline uint32_t read32(uint32_t addr) {
 	uint32_t value = fast_read32(addr, &ok);
 	if (ok) return value;
 	long v = gba_ram(addr, 4);
-	return (v < 0) ? 0 : (uint32_t)(v & 0xFFFFFFFF);
+	return (v < 0) ? 0 : (uint32_t)(v & (long)0xFFFFFFFF);
 }
 
 // Wrapper to call the core's retro_run while optionally silencing
@@ -572,13 +686,17 @@ int gba_button(int button_code) {
 
 	g_hold[id] = g_press_hold_frames;
 	int orig_video = g_video_enabled;
-	for (int i = 0; i < g_press_total_frames; ++i) {
-		if (orig_video) {
-			g_video_enabled = (i == g_press_total_frames - 1) ? 1 : 0;
+	if (!orig_video) {
+		for (int i = 0; i < g_press_total_frames; ++i) {
+			core_run_silent_wrapper();
 		}
-		core_run_silent_wrapper();
+	} else {
+		for (int i = 0; i < g_press_total_frames; ++i) {
+			g_video_enabled = (i == g_press_total_frames - 1) ? 1 : 0;
+			core_run_silent_wrapper();
+		}
+		g_video_enabled = orig_video;
 	}
-	g_video_enabled = orig_video;
 
 	return 0;
 }
@@ -605,13 +723,17 @@ int gba_reset(const char* savestate) {
 
 void gba_run(int frames) {
 	int orig_video = g_video_enabled;
-	for (int i = 0; i < frames; ++i) {
-		if (orig_video) {
-			g_video_enabled = (i == frames - 1) ? 1 : 0;
+	if (!orig_video) {
+		for (int i = 0; i < frames; ++i) {
+			core_run_silent_wrapper();
 		}
-		core_run_silent_wrapper();
+	} else {
+		for (int i = 0; i < frames; ++i) {
+			g_video_enabled = (i == frames - 1) ? 1 : 0;
+			core_run_silent_wrapper();
+		}
+		g_video_enabled = orig_video;
 	}
-	g_video_enabled = orig_video;
 }
 
 int gba_create(const char* core_so, const char* rom_path) {
@@ -715,59 +837,66 @@ static int eval_tile_property(int type, uint16_t tile_id, uint8_t col, int mx, i
     return 0;
 }
 
-// Fonction pour générer une map de "comportement" (collision, interaction, herbe) autour du joueur avec des 0 et des 1 seulement
-void gba_behavior_map(int type, int state[INPUT_SIZE], int player_x, int player_y) {
+// Fonction pour générer les trois maps de "comportement" en un seul passage
+static void gba_behavior_maps(int state[INPUT_SIZE], int player_x, int player_y) {
     uint32_t layout = read32(0x02037318);
 	uint32_t map_w = read32(layout + 0x00);
 	uint32_t map_h = read32(layout + 0x04);
     uint32_t map_data = read32(layout + 0x0C);
     uint32_t ts_pri = read32(layout + 0x10);
     uint32_t ts_sec = read32(layout + 0x14);
-	uint32_t events = 0;
+	uint32_t events = read32(0x0203731C);
 	uint8_t count = 0;
 	uint32_t warps = 0;
-	uint32_t attrs = 0;
+	if (events >= 0x08000000u) {
+		count = read8(events + 0x01);
+		warps = read32(events + 0x08);
+	}
 
-	if (type == 1) {
-		events = read32(0x0203731C);
-		if (events >= 0x08000000) {
-			count = read8(events + 0x01);
-			warps = read32(events + 0x08);
-		}
-	} else if (type == 2) {
-		uint32_t ts = ts_pri;
+	uint32_t attrs = 0;
+	uint32_t ts = ts_pri;
+	if (ts) {
+		attrs = read32(ts + 0x10);
+	}
+	if (attrs < 0x08000000u) {
+		ts = ts_sec;
 		attrs = ts ? read32(ts + 0x10) : 0;
-		if (attrs < 0x08000000) {
-			ts = ts_sec;
-			attrs = ts ? read32(ts + 0x10) : 0;
-		}
 	}
 
     int px = player_x - 7;
 	int py = player_y - 7;
-    
-	// On construit une map 11x11 autour du joueur
-	int behavior_out[11][11] = {0};
-    for (int r = 0; r < 11; r++) {
-        for (int c = 0; c < 11; c++) {
-            int mx = px + (c - 5);
-            int my = py + (r - 5);
-            
-			// Check des limites de la map
+
+	for (int r = 0; r < 11; r++) {
+		for (int c = 0; c < 11; c++) {
+			int mx = px + (c - 5);
+			int my = py + (r - 5);
+			int idx = r * 11 + c;
+
 			if (mx < 0 || my < 0 || (uint32_t)mx >= map_w || (uint32_t)my >= map_h) {
-                behavior_out[r][c] = (type == 0) ? 1 : 0; // Type 0 : collision
-                continue;
-            }
-            
+				state[24 + idx] = 1;
+				state[145 + idx] = 0;
+				state[266 + idx] = 0;
+				continue;
+			}
+
 			uint32_t pos = (uint32_t)my * map_w + (uint32_t)mx;
 			uint16_t tile = read16(map_data + pos * 2u);
-			behavior_out[r][c] = eval_tile_property(type, tile & 0x03FF, (tile >> 10) & 0x03, mx, my, events, count, warps, attrs);
-        }
-    }
+			uint16_t tile_id = tile & 0x03FFu;
+			uint8_t col = (uint8_t)((tile >> 10) & 0x03u);
 
-	// Copier le résultat dans l'état
-	for (int i=0; i<121; i++) {
-		state[24 + type*121 + i] = behavior_out[i/11][i%11];
+			int collision = eval_tile_property(0, tile_id, col, mx, my, events, count, warps, attrs);
+			int interaction = eval_tile_property(1, tile_id, col, mx, my, events, count, warps, attrs);
+			int grass = eval_tile_property(2, tile_id, col, mx, my, events, count, warps, attrs);
+
+			if (interaction == 1) {
+				collision = -1;
+				interaction = 0;
+			}
+
+			state[24 + idx] = collision;
+			state[145 + idx] = interaction;
+			state[266 + idx] = grass;
+		}
 	}
 }
 
@@ -793,19 +922,7 @@ void gba_state(int state[INPUT_SIZE]) {
 		state[3 + p*3 + 2] = (int)read16(bases[p] + 0x04); // Max HP
 	}
 
-	gba_behavior_map(0, state, (int)state[1], (int)state[2]); // Collision
-	gba_behavior_map(1, state, (int)state[1], (int)state[2]); // Interaction
-	gba_behavior_map(2, state, (int)state[1], (int)state[2]); // Herbe
-
-	// On fusionne les maps de collision et d'interaction
-	for (int i = 0; i < 121; i++) {
-		int coll_idx = 24 + i;
-		int inter_idx = 145 + i;
-		if (state[inter_idx] == 1) {
-			state[coll_idx] = -1;
-			state[inter_idx] = 0;
-		}
-	}
+	gba_behavior_maps(state, (int)state[1], (int)state[2]);
 }
 
 int get_emerald_var(uint16_t var_id) {

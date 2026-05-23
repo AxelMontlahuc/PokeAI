@@ -11,16 +11,16 @@
 #include "config.h"
 
 // Distribution normale (moyenne 0, écart-type 1) avec la méthode de Box-Muller
-double rand_normal() {
-    double u1 = (double)rand() / RAND_MAX;
-    double u2 = (double)rand() / RAND_MAX;
-    if (u1 < 1e-10) u1 = 1e-10; // Pas de log(0)
-    return sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2);
+float rand_normal() {
+    float u1 = (float)rand() / (float)RAND_MAX;
+    float u2 = (float)rand() / (float)RAND_MAX;
+    if (u1 < 1e-10f) u1 = 1e-10f; // Pas de log(0)
+    return sqrtf(-2.0f * logf(u1)) * cosf(2.0f * (float)M_PI * u2);
 }
 
 // Produit scalaire canonique de R^n
-double dot_product(double* x, double* y, int n) {
-    double res = 0.0;
+float dot_product(float* x, float* y, int n) {
+    float res = 0.0f;
     for (int i = 0; i < n; i++) {
         res += x[i] * y[i];
     }
@@ -28,22 +28,22 @@ double dot_product(double* x, double* y, int n) {
 }
 
 // Norme euclidienne associée au produit scalaire canonique
-double norm(double* x, int n) {
-    return sqrt(dot_product(x, x, n));
+float norm(float* x, int n) {
+    return sqrtf(dot_product(x, x, n));
 }
 
 // Extraction d'une colonne d'une matrice
-void column(double matrix[HIDDEN_SIZE][HIDDEN_SIZE], int j, int rows, double* col) {
+void column(float matrix[HIDDEN_SIZE][HIDDEN_SIZE], int j, int rows, float* col) {
     for (int i = 0; i < rows; i++) {
         col[i] = matrix[i][j];
     }
 }
 
 // Initialisation orthogonale : on prend la décomposition QR d'une matrice aléatoire et on utilise Q
-void orthogonal_init(double matrix[HIDDEN_SIZE][HIDDEN_SIZE], int rows, int cols) {
-    double projection[HIDDEN_SIZE];
-    double column_j_buf[HIDDEN_SIZE];
-    double column_k_buf[HIDDEN_SIZE];
+void orthogonal_init(float matrix[HIDDEN_SIZE][HIDDEN_SIZE], int rows, int cols) {
+    float projection[HIDDEN_SIZE];
+    float column_j_buf[HIDDEN_SIZE];
+    float column_k_buf[HIDDEN_SIZE];
     
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
@@ -55,7 +55,7 @@ void orthogonal_init(double matrix[HIDDEN_SIZE][HIDDEN_SIZE], int rows, int cols
     for (int j=0; j<cols; j++) {
         // Orthogonalisation
         for (int i=0; i<rows; i++) {
-            projection[i] = 0.0;
+            projection[i] = 0.0f;
         }
 
         column(matrix, j, rows, column_j_buf);
@@ -63,7 +63,7 @@ void orthogonal_init(double matrix[HIDDEN_SIZE][HIDDEN_SIZE], int rows, int cols
         for (int k=0; k<j; k++) {
             column(matrix, k, rows, column_k_buf);
 
-            double dot = dot_product(column_j_buf, column_k_buf, rows);
+            float dot = dot_product(column_j_buf, column_k_buf, rows);
             for (int i=0; i<rows; i++) {
                 projection[i] += dot * matrix[i][k];
             }
@@ -76,8 +76,8 @@ void orthogonal_init(double matrix[HIDDEN_SIZE][HIDDEN_SIZE], int rows, int cols
         column(matrix, j, rows, column_j_buf);
 
         // Normalisation
-        double n = norm(column_j_buf, rows);
-        if (n > 1e-6) { // Pas de division par zéro
+        float n = norm(column_j_buf, rows);
+        if (n > 1e-6f) { // Pas de division par zéro
             for (int i=0; i<rows; i++) {
                 matrix[i][j] /= n;
             }
@@ -86,21 +86,21 @@ void orthogonal_init(double matrix[HIDDEN_SIZE][HIDDEN_SIZE], int rows, int cols
 }
 
 // Initialisation de Xavier : distribution uniforme dans [-limit, limit] avec limit = sqrt(6 / (input_size + hidden_size))
-static void xavier_init_lstm(double matrix[HIDDEN_SIZE][INPUT_SIZE], int input_size, int hidden_size) {
-    double limit = sqrt(6.0 / (input_size + hidden_size));
+static void xavier_init_lstm(float matrix[HIDDEN_SIZE][INPUT_SIZE], int input_size, int hidden_size) {
+    float limit = sqrtf(6.0f / (float)(input_size + hidden_size));
     for (int i=0; i<hidden_size; i++) {
         for (int j=0; j<input_size; j++) {
-            double r = (double)rand() / RAND_MAX;
-            double val = (r * 2.0 - 1.0) * limit;
+            float r = (float)rand() / (float)RAND_MAX;
+            float val = (r * 2.0f - 1.0f) * limit;
             matrix[i][j] = val;
         }
     }
 }
 
 // Fonction auxiliaire pour l'initialisation des poids
-void init_weights(double matrix[HIDDEN_SIZE][COL_SIZE], int input_size, int hidden_size) {
-    double wx[HIDDEN_SIZE][INPUT_SIZE];
-    double wh[HIDDEN_SIZE][HIDDEN_SIZE];
+void init_weights(float matrix[HIDDEN_SIZE][COL_SIZE], int input_size, int hidden_size) {
+    float wx[HIDDEN_SIZE][INPUT_SIZE];
+    float wh[HIDDEN_SIZE][HIDDEN_SIZE];
 
     for (int i=0; i<hidden_size; i++) {
         for (int j=0; j<input_size; j++) {
@@ -130,43 +130,43 @@ void init_lstm(Lstm* lstm, int input_size, int hidden_size) {
     lstm->hidden_size = hidden_size;
     
     for (int i = 0; i < hidden_size; i++) {
-        lstm->hidden_state[i] = 0.0;
-        lstm->cell_state[i] = 0.0;
+        lstm->hidden_state[i] = 0.0f;
+        lstm->cell_state[i] = 0.0f;
     }
 
     for (int i = 0; i < hidden_size; i++) {
-        lstm->bf[i] = 0.0;
-        lstm->bi[i] = 0.0;
-        lstm->bc[i] = 0.0;
-        lstm->bo[i] = 0.0;
+        lstm->bf[i] = 0.0f;
+        lstm->bi[i] = 0.0f;
+        lstm->bc[i] = 0.0f;
+        lstm->bo[i] = 0.0f;
 
-        lstm->bf_m[i] = 0.0;
-        lstm->bi_m[i] = 0.0;
-        lstm->bc_m[i] = 0.0;
-        lstm->bo_m[i] = 0.0;
+        lstm->bf_m[i] = 0.0f;
+        lstm->bi_m[i] = 0.0f;
+        lstm->bc_m[i] = 0.0f;
+        lstm->bo_m[i] = 0.0f;
 
-        lstm->bf_v[i] = 0.0;
-        lstm->bi_v[i] = 0.0;
-        lstm->bc_v[i] = 0.0;
-        lstm->bo_v[i] = 0.0;
+        lstm->bf_v[i] = 0.0f;
+        lstm->bi_v[i] = 0.0f;
+        lstm->bc_v[i] = 0.0f;
+        lstm->bo_v[i] = 0.0f;
     }
 
     for (int i = 0; i < hidden_size; i++) {
         for (int j = 0; j < input_size + hidden_size; j++) {
-            lstm->wf[i][j] = 0.0;
-            lstm->wi[i][j] = 0.0;
-            lstm->wc[i][j] = 0.0;
-            lstm->wo[i][j] = 0.0;
+            lstm->wf[i][j] = 0.0f;
+            lstm->wi[i][j] = 0.0f;
+            lstm->wc[i][j] = 0.0f;
+            lstm->wo[i][j] = 0.0f;
 
-            lstm->wf_m[i][j] = 0.0;
-            lstm->wi_m[i][j] = 0.0;
-            lstm->wc_m[i][j] = 0.0;
-            lstm->wo_m[i][j] = 0.0;
+            lstm->wf_m[i][j] = 0.0f;
+            lstm->wi_m[i][j] = 0.0f;
+            lstm->wc_m[i][j] = 0.0f;
+            lstm->wo_m[i][j] = 0.0f;
 
-            lstm->wf_v[i][j] = 0.0;
-            lstm->wi_v[i][j] = 0.0;
-            lstm->wc_v[i][j] = 0.0;
-            lstm->wo_v[i][j] = 0.0;
+            lstm->wf_v[i][j] = 0.0f;
+            lstm->wi_v[i][j] = 0.0f;
+            lstm->wc_v[i][j] = 0.0f;
+            lstm->wo_v[i][j] = 0.0f;
         }
     }
 
@@ -177,13 +177,13 @@ void init_lstm(Lstm* lstm, int input_size, int hidden_size) {
 }
 
 // Fonction sigmoïde
-double sigmoid(double x) {
-    return 1.0 / (1.0 + exp(-x));
+float sigmoid(float x) {
+    return 1.0f / (1.0f + expf(-x));
 }
 
-void matrix_vector_product(double matrix[HIDDEN_SIZE][COL_SIZE], double* vector, int rows, int cols, double* result) {
+void matrix_vector_product(float matrix[HIDDEN_SIZE][COL_SIZE], float* vector, int rows, int cols, float* result) {
     for (int i=0; i<rows; i++) {
-        result[i] = 0.0;
+        result[i] = 0.0f;
         for (int j=0; j<cols; j++) {
             result[i] += matrix[i][j] * vector[j];
         }
@@ -194,27 +194,27 @@ void matrix_vector_product(double matrix[HIDDEN_SIZE][COL_SIZE], double* vector,
 void lstm_forward(Lstm* lstm, Trajectory* traj, int input[INPUT_SIZE], int t) {
     // Concaténation de l'entrée et de l'état caché dans un array z
     int z_size = lstm->input_size + lstm->hidden_size;
-    double z[COL_SIZE];
+    float z[COL_SIZE];
     
     for (int i=0; i<lstm->input_size; i++) {
-        z[i] = (double)input[i];
+        z[i] = (float)input[i];
     }
     for (int i=0; i<lstm->hidden_size; i++) {
         z[lstm->input_size + i] = lstm->hidden_state[i];
     }
 
-    memcpy(traj->z[t], z, sizeof(double) * (size_t)z_size); // Stockage de z pour la rétropropagation
+    memcpy(traj->z[t], z, sizeof(float) * (size_t)z_size); // Stockage de z pour la rétropropagation
 
     // Calcul des portes
-    double f[HIDDEN_SIZE];
-    double i_gate[HIDDEN_SIZE];
-    double g[HIDDEN_SIZE]; // On note g la porte candidat pour éviter la confusion avec la mémoire à long-terme (cellule) c
-    double o[HIDDEN_SIZE];
+    float f[HIDDEN_SIZE];
+    float i_gate[HIDDEN_SIZE];
+    float g[HIDDEN_SIZE]; // On note g la porte candidat pour éviter la confusion avec la mémoire à long-terme (cellule) c
+    float o[HIDDEN_SIZE];
 
-    double wfz[HIDDEN_SIZE];
-    double wiz[HIDDEN_SIZE];
-    double wcz[HIDDEN_SIZE];
-    double woz[HIDDEN_SIZE];
+    float wfz[HIDDEN_SIZE];
+    float wiz[HIDDEN_SIZE];
+    float wcz[HIDDEN_SIZE];
+    float woz[HIDDEN_SIZE];
     
     matrix_vector_product(lstm->wf, z, lstm->hidden_size, z_size, wfz);
     matrix_vector_product(lstm->wi, z, lstm->hidden_size, z_size, wiz);
@@ -224,7 +224,7 @@ void lstm_forward(Lstm* lstm, Trajectory* traj, int input[INPUT_SIZE], int t) {
     for (int j=0; j<lstm->hidden_size; j++) {
         f[j] = sigmoid(wfz[j] + lstm->bf[j]);
         i_gate[j] = sigmoid(wiz[j] + lstm->bi[j]);
-        g[j] = tanh(wcz[j] + lstm->bc[j]);
+        g[j] = tanhf(wcz[j] + lstm->bc[j]);
         o[j] = sigmoid(woz[j] + lstm->bo[j]);
     }
 
@@ -235,25 +235,25 @@ void lstm_forward(Lstm* lstm, Trajectory* traj, int input[INPUT_SIZE], int t) {
 
     // Mise à jour de la mémoire court-terme (état caché)
     for (int j=0; j<lstm->hidden_size; j++) {
-        lstm->hidden_state[j] = o[j] * tanh(lstm->cell_state[j]);
+        lstm->hidden_state[j] = o[j] * tanhf(lstm->cell_state[j]);
     }
 
     // Stockage des portes pour la rétropropagation
-    memcpy(traj->f[t], f, sizeof(double) * (size_t)lstm->hidden_size); // On cast à size_t aka unsigned long pour éviter les warnings
-    memcpy(traj->i[t], i_gate, sizeof(double) * (size_t)lstm->hidden_size);
-    memcpy(traj->g[t], g, sizeof(double) * (size_t)lstm->hidden_size);
-    memcpy(traj->o[t], o, sizeof(double) * (size_t)lstm->hidden_size);
-    memcpy(traj->hidden_states[t], lstm->hidden_state, sizeof(double) * (size_t)HIDDEN_SIZE);
-    memcpy(traj->c[t], lstm->cell_state, sizeof(double) * (size_t)HIDDEN_SIZE);
+    memcpy(traj->f[t], f, sizeof(float) * (size_t)lstm->hidden_size); // On cast à size_t aka unsigned long pour éviter les warnings
+    memcpy(traj->i[t], i_gate, sizeof(float) * (size_t)lstm->hidden_size);
+    memcpy(traj->g[t], g, sizeof(float) * (size_t)lstm->hidden_size);
+    memcpy(traj->o[t], o, sizeof(float) * (size_t)lstm->hidden_size);
+    memcpy(traj->hidden_states[t], lstm->hidden_state, sizeof(float) * (size_t)HIDDEN_SIZE);
+    memcpy(traj->c[t], lstm->cell_state, sizeof(float) * (size_t)HIDDEN_SIZE);
 }
 
-void lstm_backward(Lstm* lstm, Minibatch* minibatch, double dL_dh_v[MINIBATCH_SIZE][HIDDEN_SIZE], double dL_dh_p[MINIBATCH_SIZE][HIDDEN_SIZE], double c_ini[NUM_SEQS][HIDDEN_SIZE], double dL_dwf[HIDDEN_SIZE][COL_SIZE], double dL_dwi[HIDDEN_SIZE][COL_SIZE], double dL_dwc[HIDDEN_SIZE][COL_SIZE], double dL_dwo[HIDDEN_SIZE][COL_SIZE], double dL_dbf[HIDDEN_SIZE], double dL_dbi[HIDDEN_SIZE], double dL_dbc[HIDDEN_SIZE], double dL_dbo[HIDDEN_SIZE]) {
-    double dL_dh[MINIBATCH_SIZE][HIDDEN_SIZE] = {0};
-    double dL_do[MINIBATCH_SIZE][HIDDEN_SIZE];
-    double dL_dc[MINIBATCH_SIZE][HIDDEN_SIZE];
-    double dL_df[MINIBATCH_SIZE][HIDDEN_SIZE];
-    double dL_di[MINIBATCH_SIZE][HIDDEN_SIZE];
-    double dL_dg[MINIBATCH_SIZE][HIDDEN_SIZE];
+void lstm_backward(Lstm* lstm, Minibatch* minibatch, float dL_dh_v[MINIBATCH_SIZE][HIDDEN_SIZE], float dL_dh_p[MINIBATCH_SIZE][HIDDEN_SIZE], float c_ini[NUM_SEQS][HIDDEN_SIZE], float dL_dwf[HIDDEN_SIZE][COL_SIZE], float dL_dwi[HIDDEN_SIZE][COL_SIZE], float dL_dwc[HIDDEN_SIZE][COL_SIZE], float dL_dwo[HIDDEN_SIZE][COL_SIZE], float dL_dbf[HIDDEN_SIZE], float dL_dbi[HIDDEN_SIZE], float dL_dbc[HIDDEN_SIZE], float dL_dbo[HIDDEN_SIZE]) {
+    float dL_dh[MINIBATCH_SIZE][HIDDEN_SIZE] = {0};
+    float dL_do[MINIBATCH_SIZE][HIDDEN_SIZE];
+    float dL_dc[MINIBATCH_SIZE][HIDDEN_SIZE];
+    float dL_df[MINIBATCH_SIZE][HIDDEN_SIZE];
+    float dL_di[MINIBATCH_SIZE][HIDDEN_SIZE];
+    float dL_dg[MINIBATCH_SIZE][HIDDEN_SIZE];
 
     for (int t=MINIBATCH_SIZE-1; t>=0; t--) {
         //dL/dh = dL/dh_value_head + dL/dh_policy_head
@@ -263,18 +263,19 @@ void lstm_backward(Lstm* lstm, Minibatch* minibatch, double dL_dh_v[MINIBATCH_SI
 
         // dL_do = dL/dh * tanh(c) (où * est le produit de Hadamard)
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            dL_do[t][j] = dL_dh[t][j] * tanh(minibatch->c[t][j]);
+            dL_do[t][j] = dL_dh[t][j] * tanhf(minibatch->c[t][j]);
         }
 
         // dL_dc = dL/dh * o * (1 - tanh(c)^2) + dL_dc_next
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            double dL_dc_next = (t % SEQ_LEN == SEQ_LEN - 1) ? 0.0 : dL_dc[t+1][j] * minibatch->f[t+1][j];
-            dL_dc[t][j] = dL_dh[t][j] * minibatch->o[t][j] * (1 - tanh(minibatch->c[t][j]) * tanh(minibatch->c[t][j])) + dL_dc_next;
+            float dL_dc_next = (t % SEQ_LEN == SEQ_LEN - 1) ? 0.0f : dL_dc[t+1][j] * minibatch->f[t+1][j];
+            float tcell = tanhf(minibatch->c[t][j]);
+            dL_dc[t][j] = dL_dh[t][j] * minibatch->o[t][j] * (1.0f - tcell * tcell) + dL_dc_next;
         }
 
         // dL_df = dc * c_prev (où * est le produit de Hadamard)
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            double c_prev = (t % SEQ_LEN == 0) ? c_ini[t / SEQ_LEN][j] : minibatch->c[t-1][j];
+            float c_prev = (t % SEQ_LEN == 0) ? c_ini[t / SEQ_LEN][j] : minibatch->c[t-1][j];
             dL_df[t][j] = dL_dc[t][j] * c_prev;
         }
 
@@ -293,10 +294,10 @@ void lstm_backward(Lstm* lstm, Minibatch* minibatch, double dL_dh_v[MINIBATCH_SI
         // dL/d(f pré-activation) = dL/df * f * (1 - f) (car f = sigmoid(f pré-activation)) (idem pour i et o) où * est le produit de Hadamard
         // dL_d(g pré-activation) = dL/dg * (1 - g^2) (car g = tanh(g pré-activation)) où * est le produit de Hadamard
         for (int j=0; j<HIDDEN_SIZE; j++) {
-            dL_df[t][j] = dL_df[t][j] * minibatch->f[t][j] * (1 - minibatch->f[t][j]);
-            dL_di[t][j] = dL_di[t][j] * minibatch->i[t][j] * (1 - minibatch->i[t][j]);
-            dL_dg[t][j] = dL_dg[t][j] * (1 - minibatch->g[t][j] * minibatch->g[t][j]);
-            dL_do[t][j] = dL_do[t][j] * minibatch->o[t][j] * (1 - minibatch->o[t][j]);
+            dL_df[t][j] = dL_df[t][j] * minibatch->f[t][j] * (1.0f - minibatch->f[t][j]);
+            dL_di[t][j] = dL_di[t][j] * minibatch->i[t][j] * (1.0f - minibatch->i[t][j]);
+            dL_dg[t][j] = dL_dg[t][j] * (1.0f - minibatch->g[t][j] * minibatch->g[t][j]);
+            dL_do[t][j] = dL_do[t][j] * minibatch->o[t][j] * (1.0f - minibatch->o[t][j]);
         }
 
         // Gradients pour les poids et les biais : dL/dw = dL/dporte * z et dL/db = dL/dporte (où porte est f, i, g ou o)
@@ -315,7 +316,7 @@ void lstm_backward(Lstm* lstm, Minibatch* minibatch, double dL_dh_v[MINIBATCH_SI
         }
 
         // dL/dh = dL/dh_porte + dL/dh_reccurent, on calcule ici dL/dh_recurrent = dz[INPUT_SIZE:] où dz = Σ dL/dporte * w (où porte est f, i, g ou o)
-        double dz[COL_SIZE] = {0};
+        float dz[COL_SIZE] = {0};
         for (int k=0; k<COL_SIZE; k++) {
             for (int j=0; j<HIDDEN_SIZE; j++) {
                 dz[k] += lstm->wf[j][k] * dL_df[t][j] + lstm->wi[j][k] * dL_di[t][j] + lstm->wc[j][k] * dL_dg[t][j] + lstm->wo[j][k] * dL_do[t][j];
@@ -332,15 +333,15 @@ void lstm_backward(Lstm* lstm, Minibatch* minibatch, double dL_dh_v[MINIBATCH_SI
     // Calcul de la moyenne sur le minibatch
     for (int j=0; j<HIDDEN_SIZE; j++) {
         for (int k=0; k<COL_SIZE; k++) {
-            dL_dwf[j][k] /= MINIBATCH_SIZE;
-            dL_dwi[j][k] /= MINIBATCH_SIZE;
-            dL_dwc[j][k] /= MINIBATCH_SIZE;
-            dL_dwo[j][k] /= MINIBATCH_SIZE;
+            dL_dwf[j][k] /= (float)MINIBATCH_SIZE;
+            dL_dwi[j][k] /= (float)MINIBATCH_SIZE;
+            dL_dwc[j][k] /= (float)MINIBATCH_SIZE;
+            dL_dwo[j][k] /= (float)MINIBATCH_SIZE;
         }
-        dL_dbf[j] /= MINIBATCH_SIZE;
-        dL_dbi[j] /= MINIBATCH_SIZE;
-        dL_dbc[j] /= MINIBATCH_SIZE;
-        dL_dbo[j] /= MINIBATCH_SIZE;
+        dL_dbf[j] /= (float)MINIBATCH_SIZE;
+        dL_dbi[j] /= (float)MINIBATCH_SIZE;
+        dL_dbc[j] /= (float)MINIBATCH_SIZE;
+        dL_dbo[j] /= (float)MINIBATCH_SIZE;
     }
 }
 
@@ -349,25 +350,25 @@ void lstm_recompute_minibatch(Lstm* lstm, Minibatch* minibatch) {
     int z_size = lstm->input_size + lstm->hidden_size;
 
     for (int s = 0; s < NUM_SEQS; s++) {
-        double current_h[HIDDEN_SIZE];
-        double current_c[HIDDEN_SIZE];
+        float current_h[HIDDEN_SIZE];
+        float current_c[HIDDEN_SIZE];
         memcpy(current_h, minibatch->h_ini[s], sizeof(current_h));
         memcpy(current_c, minibatch->c_ini[s], sizeof(current_c));
 
         for (int step = 0; step < SEQ_LEN; step++) {
             int t = s * SEQ_LEN + step;
-            double z[COL_SIZE];
+            float z[COL_SIZE];
             
             int normalized_state[INPUT_SIZE];
-            double sumsq = 0.0;
+            float sumsq = 0.0f;
             for (int i = 0; i < 24; i++) {
-                double v = (double)minibatch->states[t][i];
+                float v = (float)minibatch->states[t][i];
                 sumsq += v * v;
             }
-            double norm_val = sqrt(sumsq) + 1e-8;
+            float norm_val = sqrtf(sumsq) + 1e-8f;
             for (int i = 0; i < 24; i++) {
-                double v = (double)minibatch->states[t][i] / norm_val;
-                double scaled = v * 1000.0;
+                float v = (float)minibatch->states[t][i] / norm_val;
+                float scaled = v * 1000.0f;
                 normalized_state[i] = (int)scaled;
             }
             for (int i = 24; i < INPUT_SIZE; i++) {
@@ -375,22 +376,22 @@ void lstm_recompute_minibatch(Lstm* lstm, Minibatch* minibatch) {
             }
 
             for (int i = 0; i < lstm->input_size; i++) {
-                z[i] = (double)normalized_state[i];
+                z[i] = (float)normalized_state[i];
             }
             for (int i = 0; i < lstm->hidden_size; i++) {
                 z[lstm->input_size + i] = current_h[i];
             }
-            memcpy(minibatch->z[t], z, sizeof(double) * (size_t)z_size);
+            memcpy(minibatch->z[t], z, sizeof(float) * (size_t)z_size);
 
-            double f[HIDDEN_SIZE];
-            double i_gate[HIDDEN_SIZE];
-            double g[HIDDEN_SIZE];
-            double o[HIDDEN_SIZE];
+            float f[HIDDEN_SIZE];
+            float i_gate[HIDDEN_SIZE];
+            float g[HIDDEN_SIZE];
+            float o[HIDDEN_SIZE];
 
-            double wfz[HIDDEN_SIZE];
-            double wiz[HIDDEN_SIZE];
-            double wcz[HIDDEN_SIZE];
-            double woz[HIDDEN_SIZE];
+            float wfz[HIDDEN_SIZE];
+            float wiz[HIDDEN_SIZE];
+            float wcz[HIDDEN_SIZE];
+            float woz[HIDDEN_SIZE];
 
             matrix_vector_product(lstm->wf, z, lstm->hidden_size, z_size, wfz);
             matrix_vector_product(lstm->wi, z, lstm->hidden_size, z_size, wiz);
@@ -400,7 +401,7 @@ void lstm_recompute_minibatch(Lstm* lstm, Minibatch* minibatch) {
             for (int j = 0; j < lstm->hidden_size; j++) {
                 f[j] = sigmoid(wfz[j] + lstm->bf[j]);
                 i_gate[j] = sigmoid(wiz[j] + lstm->bi[j]);
-                g[j] = tanh(wcz[j] + lstm->bc[j]);
+                g[j] = tanhf(wcz[j] + lstm->bc[j]);
                 o[j] = sigmoid(woz[j] + lstm->bo[j]);
             }
 
@@ -409,15 +410,15 @@ void lstm_recompute_minibatch(Lstm* lstm, Minibatch* minibatch) {
             }
 
             for (int j = 0; j < lstm->hidden_size; j++) {
-                current_h[j] = o[j] * tanh(current_c[j]);
+                current_h[j] = o[j] * tanhf(current_c[j]);
             }
 
-            memcpy(minibatch->f[t], f, sizeof(double) * (size_t)lstm->hidden_size);
-            memcpy(minibatch->i[t], i_gate, sizeof(double) * (size_t)lstm->hidden_size);
-            memcpy(minibatch->g[t], g, sizeof(double) * (size_t)lstm->hidden_size);
-            memcpy(minibatch->o[t], o, sizeof(double) * (size_t)lstm->hidden_size);
-            memcpy(minibatch->hidden_states[t], current_h, sizeof(double) * (size_t)HIDDEN_SIZE);
-            memcpy(minibatch->c[t], current_c, sizeof(double) * (size_t)HIDDEN_SIZE);
+            memcpy(minibatch->f[t], f, sizeof(float) * (size_t)lstm->hidden_size);
+            memcpy(minibatch->i[t], i_gate, sizeof(float) * (size_t)lstm->hidden_size);
+            memcpy(minibatch->g[t], g, sizeof(float) * (size_t)lstm->hidden_size);
+            memcpy(minibatch->o[t], o, sizeof(float) * (size_t)lstm->hidden_size);
+            memcpy(minibatch->hidden_states[t], current_h, sizeof(float) * (size_t)HIDDEN_SIZE);
+            memcpy(minibatch->c[t], current_c, sizeof(float) * (size_t)HIDDEN_SIZE);
         }
     }
 }

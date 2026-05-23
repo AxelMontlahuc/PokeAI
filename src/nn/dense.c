@@ -5,13 +5,13 @@
 #include "config.h"
 
 // Initialisation de Xavier : distribution uniforme dans [-limit, limit] avec limit = sqrt(6 / (input_size + output_size))
-static void xavier_init_dense(double matrix[MAX_OUTPUT_SIZE][HIDDEN_SIZE], int input_size, int output_size) {
-    double limit = sqrt(6.0 / (input_size + output_size));
+static void xavier_init_dense(float matrix[MAX_OUTPUT_SIZE][HIDDEN_SIZE], int input_size, int output_size) {
+    float limit = sqrtf(6.0f / (float)(input_size + output_size));
 
     for (int i=0; i<output_size; i++) {
         for (int j=0; j<input_size; j++) {
-            double r = (double)rand() / RAND_MAX;
-            double val = (r * 2.0 - 1.0) * limit;
+            float r = (float)rand() / (float)RAND_MAX;
+            float val = (r * 2.0f - 1.0f) * limit;
             matrix[i][j] = val;
         }
     }
@@ -39,7 +39,7 @@ void init_dense(Dense* dense, int input_size, int output_size) {
 }
 
 // Propagation
-void dense_forward(Dense* dense, double* input, double* logits) {
+void dense_forward(Dense* dense, float* input, float* logits) {
     // Multiplication matricielle : output = w * input + b
     for (int i=0; i<dense->output_size; i++) {
         logits[i] = dense->b[i];
@@ -50,16 +50,16 @@ void dense_forward(Dense* dense, double* input, double* logits) {
 }
 
 // Rétropropagation
-void dense_backward(Dense* dense, double input[MINIBATCH_SIZE][HIDDEN_SIZE], double dL_dlogits[MINIBATCH_SIZE][MAX_OUTPUT_SIZE], double dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], double dL_db[MAX_OUTPUT_SIZE], double dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE]) {
+void dense_backward(Dense* dense, float input[MINIBATCH_SIZE][HIDDEN_SIZE], float dL_dlogits[MINIBATCH_SIZE][MAX_OUTPUT_SIZE], float dL_dw[MAX_OUTPUT_SIZE][HIDDEN_SIZE], float dL_db[MAX_OUTPUT_SIZE], float dL_dinput[MINIBATCH_SIZE][HIDDEN_SIZE]) {
     // Gradients pour les poids
     for (int i=0; i<dense->output_size; i++) {
         for (int j=0; j<dense->input_size; j++) {
             // Calcul du gradient moyen sur le batch
-            double grad = 0;
+            float grad = 0.0f;
             for (int k=0; k<MINIBATCH_SIZE; k++) {
                 grad += dL_dlogits[k][i] * input[k][j];
             }
-            grad /= MINIBATCH_SIZE; // Moyenne sur le batch
+            grad /= (float)MINIBATCH_SIZE; // Moyenne sur le batch
 
             dL_dw[i][j] = grad;
         }
@@ -67,17 +67,17 @@ void dense_backward(Dense* dense, double input[MINIBATCH_SIZE][HIDDEN_SIZE], dou
 
     // Gradients pour les biais
     for (int i=0; i<dense->output_size; i++) {
-        double grad = 0;
+        float grad = 0.0f;
         for (int k=0; k<MINIBATCH_SIZE; k++) {
             grad += dL_dlogits[k][i];
         }
-        dL_db[i] = grad / MINIBATCH_SIZE;
+        dL_db[i] = grad / (float)MINIBATCH_SIZE;
     }
 
     // Gradients pour l'entrée (nécessaire pour la rétropropagation dans les couches précédentes)
     for (int k=0; k<MINIBATCH_SIZE; k++) {
         for (int j=0; j<dense->input_size; j++) {
-            dL_dinput[k][j] = 0.0;
+            dL_dinput[k][j] = 0.0f;
         }
         for (int j=0; j<dense->input_size; j++) {
             for (int i=0; i<dense->output_size; i++) {

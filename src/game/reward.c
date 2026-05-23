@@ -14,23 +14,23 @@ int visited_tiles_count = 0;
 
 typedef struct {
     uint16_t var_id;
-    uint8_t max_state;
+    uint16_t rewarded_states;
 } InternalStateVarReward;
 
 enum {
-    INTERNAL_STATE_VAR_COUNT = 6,
+    INTERNAL_STATE_VAR_COUNT = 5,
     INTERNAL_STATE_MAX_STATE = 7
 };
 
-#define INTERNAL_STATE_REWARD 1.5
+#define INTERNAL_STATE_REWARD 1.5f
+#define STATE_BIT(state) ((uint16_t)(1u << (state)))
 
 static const InternalStateVarReward INTERNAL_STATE_VARS[INTERNAL_STATE_VAR_COUNT] = {
-    {0x4092, 7}, // VAR_LITTLEROOT_INTRO_STATE: 1..7
-    {0x4084, 5}, // VAR_BIRCH_LAB_STATE: 2..5, 1 never occurs
-    {0x4060, 3}, // VAR_ROUTE101_STATE: 1..3
-    {0x4050, 4}, // VAR_LITTLEROOT_TOWN_STATE: 1..4
-    {0x408D, 4}, // VAR_LITTLEROOT_RIVAL_STATE: 2..4, 1 never occurs
-    {0x40C7, 2}, // VAR_OLDALE_RIVAL_STATE: 1..2
+    {0x4084, STATE_BIT(2) | STATE_BIT(3) | STATE_BIT(4) | STATE_BIT(5)}, // VAR_BIRCH_LAB_STATE
+    {0x4060, STATE_BIT(1) | STATE_BIT(2)},                              // VAR_ROUTE101_STATE
+    {0x4050, STATE_BIT(1) | STATE_BIT(2) | STATE_BIT(4)},                // VAR_LITTLEROOT_TOWN_STATE
+    {0x4092, STATE_BIT(3) | STATE_BIT(5) | STATE_BIT(6) | STATE_BIT(7)},  // VAR_LITTLEROOT_INTRO_STATE
+    {0x408D, STATE_BIT(2) | STATE_BIT(3)},                               // VAR_LITTLEROOT_RIVAL_STATE
 };
 
 bool INTERNAL_STATE_VAR_STATES_SEEN[INTERNAL_STATE_VAR_COUNT][INTERNAL_STATE_MAX_STATE + 1] = {{false}};
@@ -70,23 +70,26 @@ int get_party_level_sum(int state[INPUT_SIZE]) {
     return level_sum;
 }
 
-double reward_internal_state_var(int index) {
+float reward_internal_state_var(int index) {
     const InternalStateVarReward *var = &INTERNAL_STATE_VARS[index];
     int state = get_emerald_var(var->var_id);
 
-    if (state <= 0 || state > var->max_state) {
-        return 0.0;
+    if (state <= 0 || state > INTERNAL_STATE_MAX_STATE) {
+        return 0.0f;
+    }
+    if ((var->rewarded_states & STATE_BIT(state)) == 0) {
+        return 0.0f;
     }
     if (INTERNAL_STATE_VAR_STATES_SEEN[index][state]) {
-        return 0.0;
+        return 0.0f;
     }
 
     INTERNAL_STATE_VAR_STATES_SEEN[index][state] = true;
     return INTERNAL_STATE_REWARD;
 }
 
-double reward_internal_state_vars(void) {
-    double r = 0.0;
+float reward_internal_state_vars(void) {
+    float r = 0.0f;
 
     for (int i = 0; i < INTERNAL_STATE_VAR_COUNT; i++) {
         r += reward_internal_state_var(i);
@@ -95,8 +98,8 @@ double reward_internal_state_vars(void) {
     return r;
 }
 
-double reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]) {
-    double r = STEP_PENALTY;
+float reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]) {
+    float r = STEP_PENALTY;
 
     // --- 1. Récompense d'exploration
     int new_map = new_state[0];
@@ -114,7 +117,7 @@ double reward(int old_state[INPUT_SIZE], int new_state[INPUT_SIZE]) {
     
     if (new_level_sum > old_level_sum) {
         int level_diff = new_level_sum - old_level_sum;
-        r += (double)level_diff * WEIGHT_LEVEL_UP;
+        r += (float)level_diff * WEIGHT_LEVEL_UP;
     }
 
     // --- 3. Récompense de progression interne

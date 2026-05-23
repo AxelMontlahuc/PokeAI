@@ -9,19 +9,19 @@
 typedef struct Agent Agent;
 
 typedef struct EpochSummary {
-    double ppo_loss_sum;
-    double value_loss_sum;
-    double reward_sum;
-    double value_sum;
-    double value_sq_sum;
-    double adv_sum;
-    double adv_sq_sum;
-    double ratio_sum;
-    double unclipped_ratio_sum;
-    double clipped_count;
-    double entropy_sum;
-    double kl_sum;
-    double action_counts[POLICY_OUTPUT_SIZE];
+    float ppo_loss_sum;
+    float value_loss_sum;
+    float reward_sum;
+    float value_sum;
+    float value_sq_sum;
+    float adv_sum;
+    float adv_sq_sum;
+    float ratio_sum;
+    float unclipped_ratio_sum;
+    float clipped_count;
+    float entropy_sum;
+    float kl_sum;
+    float action_counts[POLICY_OUTPUT_SIZE];
     int minibatch_count;
 } EpochSummary;
 
@@ -30,26 +30,23 @@ struct Agent {
     Dense policy_head;
     Dense value_head;
     
-    double policy_logits[POLICY_OUTPUT_SIZE];
-    double value_logits[VALUE_OUTPUT_SIZE];
+    float policy_logits[POLICY_OUTPUT_SIZE];
+    float value_logits[VALUE_OUTPUT_SIZE];
     
-    double entropy_coeff;
-    double temperature;
+    float entropy_coeff;
+    float temperature;
 };
 
 Agent* init_agent();
 
-int action_choice(double probs[POLICY_OUTPUT_SIZE]);
+int action_choice(float probs[POLICY_OUTPUT_SIZE]);
 void agent_forward_t(Agent* agent, int state[INPUT_SIZE], Trajectory* traj, int t);
 void agent_forward(Agent* agent, Trajectory* traj[NUM_ENVS]);
-double agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibatch);
-double agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS], EpochSummary* summary);
-void recompute_probs(Agent* agent, Minibatch* current_minibatch, double new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE]);
-void recompute_values(Agent* agent, Minibatch* current_minibatch, double new_values[MINIBATCH_SIZE]);
+float agent_backward_minibatch(Agent* agent, Optimizer* optim, Minibatch* minibatch);
+float agent_backward(Agent* agent, Optimizer* optim, Trajectory* traj[NUM_ENVS], EpochSummary* summary);
+void recompute_probs(Agent* agent, Minibatch* current_minibatch, float new_probs[MINIBATCH_SIZE][POLICY_OUTPUT_SIZE]);
+void recompute_values(Agent* agent, Minibatch* current_minibatch, float new_values[MINIBATCH_SIZE]);
 void train_epoch(Agent* agent, Optimizer* optim);
 void train(Agent* agent, Optimizer* optim, int start_epoch, int epochs);
-double get_entropy_coeff();
-double get_temperature();
-void set_epoch_schedule(int epoch);
 
 #endif
